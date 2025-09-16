@@ -20,7 +20,7 @@ FirebaseDatabase database = FirebaseDatabase.instance;
 
 class _MyAppState extends State<MyApp> {
   late GoogleMapController mapController;
-  bool isGateOpen = false;
+  Map<String, Map<String, dynamic>> markersState = {};
   int humidity = 0;
   int waterlevel = 0;
   final LatLng _center = const LatLng(-28.813556, -49.341167);
@@ -36,39 +36,65 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
+    markersState = {};
     _readGateStatus();
     _readHumidity();
     _readWaterLevel();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      setState(() {
-        final markerId = 'marker_0'; // ID único para o primeiro marker
-        markers.add(_buildMarker(_center, markerId, context));
-
-        // Salvar o primeiro marker no banco de dados
-        database
-            .ref('markers/$markerId')
-            .set({
-              'latitude': _center.latitude,
-              'longitude': _center.longitude,
-              'humidity': 0,
-              'waterlevel': 0,
-              'isGateOpen': false,
-            })
-            .then((_) => print('Marker $markerId added to Firebase'))
-            .catchError((error) => print('Failed to add marker: $error'));
-      });
+      database
+          .ref('markers')
+          .once()
+          .then((snapshot) {
+            final data = snapshot.snapshot.value as Map<dynamic, dynamic>?;
+            setState(() {
+              if (data != null) {
+                data.forEach((key, value) {
+                  final markerData = value as Map<dynamic, dynamic>;
+                  final position = LatLng(
+                    markerData['latitude'] as double,
+                    markerData['longitude'] as double,
+                  );
+                  markersState[key] = {
+                    'humidity': markerData['humidity'] ?? 0,
+                    'waterlevel': markerData['waterlevel'] ?? 0,
+                    'isGateOpen': markerData['isGateOpen'] ?? false,
+                  };
+                  markers.add(_buildMarker(position, key, context));
+                });
+              } else {
+                final markerId = 'marker_0';
+                markers.add(_buildMarker(_center, markerId, context));
+                database
+                    .ref('markers/$markerId')
+                    .set({
+                      'latitude': _center.latitude,
+                      'longitude': _center.longitude,
+                      'humidity': 0,
+                      'waterlevel': 0,
+                      'isGateOpen': false,
+                    })
+                    .then((_) => print('Marker $markerId added to Firebase'))
+                    .catchError(
+                      (error) => print('Failed to add marker: $error'),
+                    );
+              }
+            });
+          })
+          .catchError((error) => print('Failed to fetch markers: $error'));
     });
   }
 
   Marker _buildMarker(LatLng position, String id, BuildContext context) {
     return Marker(
-      icon: BitmapDescriptor.defaultMarkerWithHue(
-        isGateOpen ? BitmapDescriptor.hueBlue : BitmapDescriptor.hueRed,
-      ),
       markerId: MarkerId(id),
       draggable: true,
-      position: position, // Mantém a posição atual do marker
+      position: position,
+      icon: BitmapDescriptor.defaultMarkerWithHue(
+        markersState[id]?['isGateOpen'] == true
+            ? BitmapDescriptor.hueBlue
+            : BitmapDescriptor.hueRed,
+      ),
       infoWindow: InfoWindow(
         title: 'Target Location',
         snippet: 'Tap for controls',
@@ -77,7 +103,6 @@ class _MyAppState extends State<MyApp> {
         },
       ),
       onDragEnd: (newPosition) {
-        // Atualiza a posição do marker no banco de dados ao ser arrastado
         database
             .ref('markers/$id')
             .update({
@@ -90,7 +115,6 @@ class _MyAppState extends State<MyApp> {
             );
 
         setState(() {
-          // Atualiza a posição local do marker
           markers = markers.map((marker) {
             if (marker.markerId.value == id) {
               return marker.copyWith(positionParam: newPosition);
@@ -129,7 +153,7 @@ class _MyAppState extends State<MyApp> {
                 children: [
                   const Icon(Icons.water_drop, color: Colors.blue),
                   const SizedBox(width: 8.0),
-                  Text('Humidity: $humidity%'),
+                  Text('Ph: ${markersState[markerId]?['humidity'] ?? 0}%'),
                 ],
               ),
               const SizedBox(height: 8.0),
@@ -137,7 +161,9 @@ class _MyAppState extends State<MyApp> {
                 children: [
                   const Icon(Icons.layers, color: Colors.green),
                   const SizedBox(width: 8.0),
-                  Text('Water Level: $waterlevel%'),
+                  Text(
+                    'Water Level: ${markersState[markerId]?['waterlevel'] ?? 0}%',
+                  ),
                 ],
               ),
               const SizedBox(height: 16.0),
@@ -146,7 +172,7 @@ class _MyAppState extends State<MyApp> {
                 children: [
                   const Text('Gate Status:', style: TextStyle(fontSize: 16.0)),
                   Switch(
-                    value: isGateOpen,
+                    value: markersState[markerId]?['isGateOpen'] ?? false,
                     onChanged: (value) {
                       toggleGate(markerId, value);
                     },
@@ -161,10 +187,19 @@ class _MyAppState extends State<MyApp> {
   }
 
   void toggleGate(String markerId, bool status) {
+    final markerState = markersState[markerId] ?? {};
+    markerState['isGateOpen'] = status;
+
     setState(() {
-      isGateOpen = status;
+      markersState[markerId] = markerState;
     });
-    _writeMarkerData(markerId, status, humidity, waterlevel);
+
+    _writeMarkerData(
+      markerId,
+      status,
+      markerState['humidity'] ?? 0,
+      markerState['waterlevel'] ?? 0,
+    );
   }
 
   void _readGateStatus() {
@@ -172,7 +207,7 @@ class _MyAppState extends State<MyApp> {
       final data = event.snapshot.value as Map<dynamic, dynamic>?;
       if (data != null && data.containsKey('isGateOpen')) {
         setState(() {
-          isGateOpen = data['isGateOpen'];
+          // This is no longer used as isGateOpen is now per marker
         });
       }
     });
@@ -229,9 +264,11 @@ class _MyAppState extends State<MyApp> {
       final data = event.snapshot.value as Map<dynamic, dynamic>?;
       if (data != null) {
         setState(() {
-          humidity = data['humidity'] ?? 0;
-          waterlevel = data['waterlevel'] ?? 0;
-          isGateOpen = data['isGateOpen'] ?? false;
+          markersState[markerId] = {
+            'humidity': data['humidity'] ?? 0,
+            'waterlevel': data['waterlevel'] ?? 0,
+            'isGateOpen': data['isGateOpen'] ?? false,
+          };
         });
       }
     });
@@ -250,8 +287,39 @@ class _MyAppState extends State<MyApp> {
           'humidity': humidityValue,
           'waterlevel': waterLevelValue,
         })
-        .then((_) => print('Marker $markerId data updated in Firebase'))
-        .catchError((error) => print('Failed to update marker data: $error'));
+        .then((_) {
+          print('Marker $markerId data updated in Firebase');
+          // Enviar notificação para exemplo
+          if (waterLevelValue > 80) {
+            _sendLocalNotification(
+              'Atenção',
+              'Nível de água alto no $markerId!',
+            );
+          }
+          if (humidityValue < 20) {
+            _sendLocalNotification('Atenção', 'Umidade baixa no $markerId!');
+          }
+          if (gateStatus) {
+            _sendLocalNotification(
+              'Portão aberto',
+              'O portão do $markerId foi aberto.',
+            );
+          } else {
+            _sendLocalNotification(
+              'Portão fechado',
+              'O portão do $markerId foi fechado.',
+            );
+          }
+        })
+        .catchError((error) {
+          return null;
+        });
+  }
+
+  void _sendLocalNotification(String title, String body) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$title: $body'), duration: Duration(seconds: 3)),
+    );
   }
 
   @override
