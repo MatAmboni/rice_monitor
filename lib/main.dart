@@ -2,6 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'screens/dashboard_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -156,6 +157,24 @@ class _MyAppState extends State<MyApp> {
                   Text('Ph: ${markersState[markerId]?['humidity'] ?? 0}%'),
                 ],
               ),
+              Row(
+                children: [
+                  const Icon(Icons.water_drop, color: Colors.blue),
+                  const SizedBox(width: 8.0),
+                  Text(
+                    'Humidity: ${markersState[markerId]?['humidity'] ?? 0}%',
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  const Icon(Icons.water, color: Colors.blue),
+                  const SizedBox(width: 8.0),
+                  Text(
+                    'Water Flow: ${markersState[markerId]?['humidity'] ?? 0}%',
+                  ),
+                ],
+              ),
               const SizedBox(height: 8.0),
               Row(
                 children: [
@@ -166,11 +185,28 @@ class _MyAppState extends State<MyApp> {
                   ),
                 ],
               ),
+              Row(
+                children: [
+                  const Icon(Icons.thermostat, color: Colors.green),
+                  const SizedBox(width: 8.0),
+                  Text(
+                    'Water Temperature: ${markersState[markerId]?['waterlevel'] ?? 0}%',
+                  ),
+                ],
+              ),
               const SizedBox(height: 16.0),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Gate Status:', style: TextStyle(fontSize: 16.0)),
+                  ElevatedButton.icon(
+                    onPressed: () => _removeMarker(markerId),
+                    icon: const Icon(Icons.delete, color: Colors.white),
+                    label: const Text('Remove Marker'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                    ),
+                  ),
+                  const SizedBox(width: 8.0),
                   Switch(
                     value: markersState[markerId]?['isGateOpen'] ?? false,
                     onChanged: (value) {
@@ -322,41 +358,77 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
+  void _removeMarker(String markerId) {
+    database
+        .ref('markers/$markerId')
+        .remove()
+        .then((_) {
+          print('Marker $markerId removed from Firebase');
+          setState(() {
+            markers.removeWhere((marker) => marker.markerId.value == markerId);
+            markersState.remove(markerId);
+          });
+        })
+        .catchError((error) => print('Failed to remove marker: $error'));
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.green[700]),
-      home: Scaffold(
-        appBar: AppBar(title: const Text('TCC'), elevation: 2),
-        body: Builder(
-          builder: (scaffoldContext) {
-            return GoogleMap(
-              onMapCreated: (controller) => mapController = controller,
-              markers: markers
-                  .map(
-                    (m) => _buildMarker(
-                      m.position,
-                      m.markerId.value,
-                      scaffoldContext,
-                    ),
-                  )
-                  .toSet(),
-              initialCameraPosition: CameraPosition(
-                target: _center,
-                zoom: 15.0,
-              ),
-            );
-          },
-        ),
-        floatingActionButton: Builder(
-          builder: (scaffoldContext) {
-            return FloatingActionButton(
-              onPressed: () => _addNewMarker(scaffoldContext),
-              child: const Icon(Icons.add_location_alt),
-            );
-          },
-        ),
+      home: Builder(
+        builder: (BuildContext context) {
+          return Scaffold(
+            appBar: AppBar(
+              title: const Text('TCC'),
+              elevation: 2,
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.dashboard),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            DashboardScreen(markersState: markersState),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+            body: Builder(
+              builder: (scaffoldContext) {
+                return GoogleMap(
+                  onMapCreated: (controller) => mapController = controller,
+                  markers: markers
+                      .map(
+                        (m) => _buildMarker(
+                          m.position,
+                          m.markerId.value,
+                          scaffoldContext,
+                        ),
+                      )
+                      .toSet(),
+                  initialCameraPosition: CameraPosition(
+                    target: _center,
+                    zoom: 15.0,
+                  ),
+                  mapType: MapType.satellite, // Set map type to satellite
+                );
+              },
+            ),
+            floatingActionButton: Builder(
+              builder: (scaffoldContext) {
+                return FloatingActionButton(
+                  onPressed: () => _addNewMarker(scaffoldContext),
+                  child: const Icon(Icons.add_location_alt),
+                );
+              },
+            ),
+          );
+        },
       ),
     );
   }
