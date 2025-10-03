@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/marker_details_screen.dart';
+import 'screens/hydraulic_analysis_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

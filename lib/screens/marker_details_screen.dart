@@ -1,45 +1,36 @@
 import 'package:flutter/material.dart';
 
 class MarkerDetailsScreen extends StatelessWidget {
-  final String markerKey;
+  final String markerId;
   final Map<String, dynamic> markerData;
 
   const MarkerDetailsScreen({
     Key? key,
-    required this.markerKey,
+    required this.markerId,
     required this.markerData,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Details for $markerKey')),
+      appBar: AppBar(title: Text('Details for $markerId')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 8),
+            Text('Water Level: ${markerData['waterlevel']}%'),
+            Text('Flow Rate: ${markerData['humidity']}%'),
             Text(
-              'Humidity: ${markerData['humidity'] ?? "N/A"}%',
-              style: const TextStyle(fontSize: 16),
+              'Gate Status: ${markerData['isGateOpen'] ? 'Open' : 'Closed'}',
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Water Level: ${markerData['waterlevel'] ?? "N/A"}%',
-              style: const TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Gate Open: ${markerData['isGateOpen'] == true ? "Yes" : "No"}',
-              style: const TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 200,
-              child: SimpleBarChart(
-                values: [(markerData['waterlevel'] ?? 0).toDouble()],
-                labels: [markerKey],
+            const SizedBox(height: 16.0),
+            ElevatedButton(
+              onPressed: () {
+                // Add logic to toggle gate status
+              },
+              child: Text(
+                markerData['isGateOpen'] ? 'Close Gate' : 'Open Gate',
               ),
             ),
           ],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/screens/hydraulic_analysis_screen.dart';
 import 'marker_details_screen.dart'; // Importar a nova tela
 
 class DashboardScreen extends StatelessWidget {
@@ -9,59 +10,41 @@ class DashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    int totalMarkers = markersState.length;
-    int openGates = markersState.values
-        .where((marker) => marker['isGateOpen'] == true)
-        .length;
-
     return Scaffold(
       appBar: AppBar(title: const Text('Dashboard')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Total Nodes: $totalMarkers',
-              style: const TextStyle(fontSize: 18),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Open Gates: $openGates',
-              style: const TextStyle(fontSize: 18),
-            ),
-
-            const SizedBox(height: 16),
-            Expanded(
-              child: ListView.builder(
-                itemCount: markersState.length,
-                itemBuilder: (context, index) {
-                  String markerKey = markersState.keys.elementAt(index);
-                  Map<String, dynamic> marker = markersState[markerKey]!;
-                  return Card(
-                    child: ListTile(
-                      title: Text(markerKey),
-                      subtitle: Text(
-                        'Gate Open: ${marker['isGateOpen'] == true ? "Yes" : "No"}',
-                      ),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => MarkerDetailsScreen(
-                              markerKey: markerKey,
-                              markerData: marker,
-                            ),
-                          ),
-                        );
-                      },
+      body: ListView.builder(
+        itemCount: markersState.length,
+        itemBuilder: (context, index) {
+          final markerId = markersState.keys.elementAt(index);
+          final markerData = markersState[markerId]!;
+          return Card(
+            child: ListTile(
+              title: Text('Marker: $markerId'),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Water Level: ${markerData['waterlevel']}%'),
+                  Text('Flow Rate: ${markerData['humidity']}%'),
+                  Text(
+                    'Gate Status: ${markerData['isGateOpen'] ? 'Open' : 'Closed'}',
+                  ),
+                ],
+              ),
+              trailing: IconButton(
+                icon: const Icon(Icons.analytics),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          HydraulicAnalysisScreen(markerId: markerId),
                     ),
                   );
                 },
               ),
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
