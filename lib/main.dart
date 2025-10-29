@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'screens/dashboard_screen.dart';
-import 'screens/marker_details_screen.dart';
-import 'screens/hydraulic_analysis_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -61,6 +59,9 @@ class _MyAppState extends State<MyApp> {
                   markersState[key] = {
                     'humidity': markerData['humidity'] ?? 0,
                     'waterlevel': markerData['waterlevel'] ?? 0,
+                    'waterFlow':
+                        markerData['waterFlow'] ?? 0, // Include waterFlow
+                    'ph': markerData['ph'] ?? 0, // Include ph
                     'isGateOpen': markerData['isGateOpen'] ?? false,
                   };
                   markers.add(_buildMarker(position, key, context));
@@ -75,6 +76,8 @@ class _MyAppState extends State<MyApp> {
                       'longitude': _center.longitude,
                       'humidity': 0,
                       'waterlevel': 0,
+                      'waterFlow': 0, // Initialize waterFlow
+                      'ph': 0, // Initialize ph
                       'isGateOpen': false,
                     })
                     .then((_) => print('Marker $markerId added to Firebase'))
@@ -154,26 +157,10 @@ class _MyAppState extends State<MyApp> {
               const SizedBox(height: 8.0),
               Row(
                 children: [
-                  const Icon(Icons.water_drop, color: Colors.blue),
-                  const SizedBox(width: 8.0),
-                  Text('Ph: ${markersState[markerId]?['humidity'] ?? 0}%'),
-                ],
-              ),
-              Row(
-                children: [
-                  const Icon(Icons.water_drop, color: Colors.blue),
-                  const SizedBox(width: 8.0),
-                  Text(
-                    'Humidity: ${markersState[markerId]?['humidity'] ?? 0}%',
-                  ),
-                ],
-              ),
-              Row(
-                children: [
                   const Icon(Icons.water, color: Colors.blue),
                   const SizedBox(width: 8.0),
                   Text(
-                    'Water Flow: ${markersState[markerId]?['humidity'] ?? 0}%',
+                    'Water Flow: ${markersState[markerId]?['waterFlow'] ?? 0}%',
                   ),
                 ],
               ),
@@ -184,15 +171,6 @@ class _MyAppState extends State<MyApp> {
                   const SizedBox(width: 8.0),
                   Text(
                     'Water Level: ${markersState[markerId]?['waterlevel'] ?? 0}%',
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  const Icon(Icons.thermostat, color: Colors.green),
-                  const SizedBox(width: 8.0),
-                  Text(
-                    'Water Temperature: ${markersState[markerId]?['waterlevel'] ?? 0}%',
                   ),
                 ],
               ),
@@ -209,6 +187,7 @@ class _MyAppState extends State<MyApp> {
                     ),
                   ),
                   const SizedBox(width: 8.0),
+                  const Text("Gate Control"),
                   Switch(
                     value: markersState[markerId]?['isGateOpen'] ?? false,
                     onChanged: (value) {
@@ -383,7 +362,7 @@ class _MyAppState extends State<MyApp> {
         builder: (BuildContext context) {
           return Scaffold(
             appBar: AppBar(
-              title: const Text('TCC'),
+              title: const Text('Rice Monitor App'),
               elevation: 2,
               actions: [
                 IconButton(
@@ -417,6 +396,9 @@ class _MyAppState extends State<MyApp> {
                     target: _center,
                     zoom: 15.0,
                   ),
+                  // 👇 Add these lines
+                  myLocationEnabled: false,
+                  myLocationButtonEnabled: false,
                   mapType: MapType.satellite, // Set map type to satellite
                 );
               },
