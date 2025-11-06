@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'screens/dashboard_screen.dart';
@@ -7,7 +8,19 @@ import 'screens/dashboard_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  runApp(const MyApp());
+  runApp(const RootApp());
+}
+
+class RootApp extends StatelessWidget {
+  const RootApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: LoginScreen(),
+    );
+  }
 }
 
 class MyApp extends StatefulWidget {
@@ -24,23 +37,29 @@ class _MyAppState extends State<MyApp> {
   Map<String, Map<String, dynamic>> markersState = {};
   int humidity = 0;
   int waterlevel = 0;
+  int waterflow = 0;
+  int ph = 0;
+  bool isGateOpen = false;
   final LatLng _center = const LatLng(-28.813556, -49.341167);
 
   // Lista de markers
   Set<Marker> markers = {};
 
   // Referências ao Firebase
-  final DatabaseReference gateStatusRef = database.ref('gateStatus');
   final DatabaseReference humidityRef = database.ref('humidity');
-  final DatabaseReference waterLevelRef = database.ref('waterLevel');
+  final DatabaseReference waterLevelRef = database.ref('waterlevel');
+  final DatabaseReference waterFlowRef = database.ref('waterFlow');
+  final DatabaseReference waterPHRef = database.ref('ph');
+  final DatabaseReference gateRef = database.ref('isGateOpen');
 
   @override
   void initState() {
     super.initState();
     markersState = {};
-    _readGateStatus();
     _readHumidity();
     _readWaterLevel();
+    _readWaterFlow();
+    _readWaterPh();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       database
@@ -87,6 +106,7 @@ class _MyAppState extends State<MyApp> {
               }
             });
           })
+          // ignore: invalid_return_type_for_catch_error
           .catchError((error) => print('Failed to fetch markers: $error'));
     });
   }
@@ -133,73 +153,185 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _showMarkerDetails(BuildContext context, String markerId) {
-    _readMarkerData(markerId); // Ler dados do marker específico
+    _readMarkerData(markerId);
+
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       builder: (BuildContext context) {
-        return Container(
-          padding: const EdgeInsets.all(16.0),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Details for $markerId',
-                style: const TextStyle(
-                  fontSize: 18.0,
-                  fontWeight: FontWeight.bold,
-                ),
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter modalSetState) {
+            final currentMarkerData = markersState[markerId] ?? {};
+            final waterFlowValue = (currentMarkerData['waterFlow'] ?? 0) as num;
+            final waterFlowText = waterFlowValue > 0 ? 'Sim' : 'Não';
+            final waterFlowColor = waterFlowValue > 0
+                ? Colors.blue
+                : Colors.grey;
+
+            // 2. Lógica da Água Disponível (Sim/Não)
+            final waterLevelValue =
+                (currentMarkerData['waterlevel'] ?? 0) as num;
+            final availableWaterText = waterLevelValue == 1 ? 'Sim' : 'Não';
+            final availableWaterColor = waterLevelValue == 1
+                ? Colors.green
+                : Colors.red;
+
+            // 3. Lógica da Umidade (Seca/Úmida)
+            final humidityValue = (currentMarkerData['humidity'] ?? 0) as num;
+            final bool isHumid = humidityValue > 50;
+            final String humidityText = isHumid ? 'Terra Úmida' : 'Terra Seca';
+            final Color humidityColor = isHumid
+                ? Colors.brown.shade700
+                : Colors.orange.shade800;
+
+            // 4. Lógica do Círculo pH
+            final phValue = (currentMarkerData['ph'] ?? 0.0).toDouble();
+            final bool isPhOk = phValue >= 6.0 && phValue <= 8.0;
+            final IconData phIcon = isPhOk
+                ? Icons.check_circle
+                : Icons.warning_amber;
+            final Color phIconColor = isPhOk
+                ? Colors.green.shade700
+                : Colors.orange.shade700;
+
+            // Widget do Círculo pH (MAIOR)
+            Widget phStatusCircle = Container(
+              width: 80, // Tamanho aumentado
+              height: 80, // Tamanho aumentado
+              margin: const EdgeInsets.only(left: 16.0, right: 8.0),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: phIconColor, width: 3.0),
+                color: phIconColor.withOpacity(0.1),
               ),
-              const SizedBox(height: 8.0),
-              Row(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.water, color: Colors.blue),
-                  const SizedBox(width: 8.0),
                   Text(
-                    'Water Flow: ${markersState[markerId]?['waterFlow'] ?? 0}%',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8.0),
-              Row(
-                children: [
-                  const Icon(Icons.layers, color: Colors.green),
-                  const SizedBox(width: 8.0),
-                  Text(
-                    'Water Level: ${markersState[markerId]?['waterlevel'] ?? 0}%',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16.0),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  ElevatedButton.icon(
-                    onPressed: () => _removeMarker(markerId),
-                    icon: const Icon(Icons.delete, color: Colors.white),
-                    label: const Text('Remove Marker'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
+                    'pH',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14, // Fonte aumentada
+                      color: phIconColor,
                     ),
                   ),
-                  const SizedBox(width: 8.0),
-                  const Text("Gate Control"),
-                  Switch(
-                    value: markersState[markerId]?['isGateOpen'] ?? false,
-                    onChanged: (value) {
-                      toggleGate(markerId, value);
+                  Icon(phIcon, color: phIconColor, size: 28), // Ícone aumentado
+                ],
+              ),
+            );
+
+            return Container(
+              padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 24.0),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Detalhes de $markerId', // Traduzido
+                    style: const TextStyle(
+                      fontSize: 18.0,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 16.0),
+                          _buildInfoRow(
+                            Icons.waves,
+                            waterFlowColor,
+                            'Fluxo de Água', // Traduzido
+                            waterFlowText,
+                          ),
+
+                          _buildInfoRow(
+                            Icons.layers,
+                            availableWaterColor,
+                            'Água Disponível', // Traduzido
+                            availableWaterText,
+                          ),
+
+                          _buildInfoRow(
+                            Icons.opacity,
+                            humidityColor, // Cor dinâmica
+                            'Umidade do Solo', // Traduzido
+                            humidityText, // Texto dinâmico
+                          ),
+                        ],
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4.0),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [const Spacer(), phStatusCircle],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16.0),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "Controle da Comporta",
+                        style: TextStyle(fontSize: 16),
+                      ),
+                      Switch(
+                        value: currentMarkerData['isGateOpen'] ?? false,
+                        onChanged: (value) {
+                          toggleGate(markerId, value);
+                          modalSetState(() {});
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8.0),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _removeMarker(markerId);
                     },
+                    icon: const Icon(Icons.delete, color: Colors.white),
+                    label: const Text('Remover Marcador'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      minimumSize: const Size(double.infinity, 40),
+                    ),
                   ),
                 ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, Color color, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 22),
+          const SizedBox(width: 12.0),
+          Text('$label: ', style: const TextStyle(fontSize: 16)),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -217,17 +349,6 @@ class _MyAppState extends State<MyApp> {
       markerState['humidity'] ?? 0,
       markerState['waterlevel'] ?? 0,
     );
-  }
-
-  void _readGateStatus() {
-    gateStatusRef.onValue.listen((event) {
-      final data = event.snapshot.value as Map<dynamic, dynamic>?;
-      if (data != null && data.containsKey('isGateOpen')) {
-        setState(() {
-          // This is no longer used as isGateOpen is now per marker
-        });
-      }
-    });
   }
 
   void _readHumidity() {
@@ -252,6 +373,28 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
+  void _readWaterFlow() {
+    waterFlowRef.onValue.listen((event) {
+      final data = event.snapshot.value as int?;
+      if (data != null) {
+        setState(() {
+          waterflow = data;
+        });
+      }
+    });
+  }
+
+  void _readWaterPh() {
+    waterPHRef.onValue.listen((event) {
+      final data = event.snapshot.value as int?;
+      if (data != null) {
+        setState(() {
+          ph = data;
+        });
+      }
+    });
+  }
+
   void _addNewMarker(BuildContext context) {
     setState(() {
       final newPosition = LatLng(
@@ -269,6 +412,8 @@ class _MyAppState extends State<MyApp> {
             'longitude': newPosition.longitude,
             'humidity': 0,
             'waterlevel': 0,
+            'waterFlow': 0,
+            'ph': 0,
             'isGateOpen': false,
           })
           .then((_) => print('Marker $markerId added to Firebase'))
@@ -285,6 +430,8 @@ class _MyAppState extends State<MyApp> {
             'humidity': data['humidity'] ?? 0,
             'waterlevel': data['waterlevel'] ?? 0,
             'isGateOpen': data['isGateOpen'] ?? false,
+            'waterFlow': data['waterFlow'] ?? 0,
+            'ph': data['ph'] ?? 0.0,
           };
         });
       }
@@ -366,13 +513,25 @@ class _MyAppState extends State<MyApp> {
               elevation: 2,
               actions: [
                 IconButton(
+                  icon: const Icon(Icons.logout),
+                  onPressed: () {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const LoginScreen(),
+                      ),
+                    );
+                  },
+                ),
+                IconButton(
                   icon: const Icon(Icons.dashboard),
                   onPressed: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) =>
-                            DashboardScreen(markersState: markersState),
+                        builder: (context) => DashboardScreen(
+                          markersRef: database.ref('markers'),
+                        ),
                       ),
                     );
                   },
@@ -396,10 +555,9 @@ class _MyAppState extends State<MyApp> {
                     target: _center,
                     zoom: 15.0,
                   ),
-                  // 👇 Add these lines
                   myLocationEnabled: false,
                   myLocationButtonEnabled: false,
-                  mapType: MapType.satellite, // Set map type to satellite
+                  mapType: MapType.satellite,
                 );
               },
             ),
