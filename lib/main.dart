@@ -441,58 +441,132 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
-  // MODIFICADO: Esta função agora escuta E verifica os dados
   void _readMarkerData(String markerId) {
     database.ref('markers/$markerId').onValue.listen((event) {
       final data = event.snapshot.value as Map<dynamic, dynamic>?;
       if (data != null) {
-        final markerDataMap = {
+        final newMarkerData = {
           'humidity': data['humidity'] ?? 0,
           'waterlevel': data['waterlevel'] ?? 0,
           'isGateOpen': data['isGateOpen'] ?? false,
           'waterFlow': data['waterFlow'] ?? 0,
-          'ph': data['ph'] ?? 0.0,
+          'ph': (data['ph'] ?? 0).toDouble(),
         };
 
-        // Verifica se o widget ainda está montado antes de chamar setState
+        final oldMarkerData = Map<String, dynamic>.from(
+          markersState[markerId] ?? {},
+        );
+
         if (mounted) {
           setState(() {
-            markersState[markerId] = markerDataMap;
+            markersState[markerId] = newMarkerData;
           });
         }
 
-        // NOVO: Chama a função de verificação sempre que os dados mudam
-        _checkSensorValuesAndNotify(markerId, markerDataMap);
+        // Só notifica se algo mudou
+        _checkSensorValuesAndNotify(markerId, oldMarkerData, newMarkerData);
       }
     });
   }
 
-  // NOVO: Função dedicada para verificar os dados e enviar notificações (SnackBar)
-  void _checkSensorValuesAndNotify(String markerId, Map<String, dynamic> data) {
-    final phValue = (data['ph'] ?? 0.0).toDouble();
-    final waterLevelValue = (data['waterlevel'] ?? 0) as num;
-
-    // Lógica para o pH (baseado no seu modal: 6.0 a 8.0 é bom)
-    if (phValue < 6.0 && phValue > 0) {
-      // Ignora 0.0 que pode ser inicial
-      _sendLocalNotification(
-        'Alerta de pH Baixo',
-        'O pH no $markerId está muito baixo ($phValue)!',
-      );
-    } else if (phValue > 8.0) {
-      _sendLocalNotification(
-        'Alerta de pH Alto',
-        'O pH no $markerId está muito alto ($phValue)!',
-      );
+  void _checkSensorValuesAndNotify(
+    String markerId,
+    Map<String, dynamic> oldData,
+    Map<String, dynamic> newData,
+  ) {
+    // === Comparar pH ===
+    final oldPh = (oldData['ph'] ?? 0.0).toDouble();
+    final newPh = (newData['ph'] ?? 0.0).toDouble();
+    if (oldPh != newPh) {
+      if (newPh < 6.0 && newPh > 0) {
+        _sendLocalNotification(
+          'Alerta de pH Baixo',
+          'O pH no $markerId está muito baixo ($newPh)!',
+        );
+      } else if (newPh > 8.0) {
+        _sendLocalNotification(
+          'Alerta de pH Alto',
+          'O pH no $markerId está muito alto ($newPh)!',
+        );
+      } else if (newPh >= 6.0 && newPh <= 8.0) {
+        _sendLocalNotification(
+          'pH Normalizado',
+          'O pH no $markerId voltou ao normal ($newPh).',
+        );
+      }
     }
 
-    // Lógica para Nível da Água (baseado no seu modal: 0 = Não, 1 = Sim)
-    // Se '0' significa nível baixo/sem água, então:
-    if (waterLevelValue == 0) {
-      _sendLocalNotification(
-        'Alerta de Nível da Água',
-        'Nível de água baixo (indisponível) no $markerId!',
-      );
+    // === Comparar nível da água ===
+    final oldWaterLevel = (oldData['waterlevel'] ?? -1) as num;
+    final newWaterLevel = (newData['waterlevel'] ?? -1) as num;
+    if (oldWaterLevel != newWaterLevel) {
+      if (newWaterLevel == 0) {
+        _sendLocalNotification(
+          'Alerta de Nível da Água',
+          'Nível de água baixo (indisponível) no $markerId!',
+        );
+      } else if (newWaterLevel == 1) {
+        _sendLocalNotification(
+          'Nível de Água Restaurado',
+          'Nível de água normalizado no $markerId.',
+        );
+      }
+    }
+
+    // === Comparar fluxo de água ===
+    final oldFlow = (oldData['waterFlow'] ?? -1) as num;
+    final newFlow = (newData['waterFlow'] ?? -1) as num;
+    if (oldFlow != newFlow) {
+      if (newFlow > 0) {
+        _sendLocalNotification(
+          'Fluxo de Água Ativo',
+          'Há fluxo de água detectado em $markerId.',
+        );
+      } else {
+        _sendLocalNotification(
+          'Fluxo de Água Interrompido',
+          'Fluxo de água interrompido em $markerId.',
+        );
+      }
+    }
+
+    // === Comparar umidade ===
+    final oldHumidity = (oldData['humidity'] ?? -1) as num;
+    final newHumidity = (newData['humidity'] ?? -1) as num;
+    if (oldHumidity != newHumidity) {
+      if (newHumidity < 40) {
+        _sendLocalNotification(
+          'Solo Seco',
+          'A umidade do solo está baixa em $markerId ($newHumidity%).',
+        );
+      } else if (newHumidity >= 40 && newHumidity <= 70) {
+        _sendLocalNotification(
+          'Solo Úmido',
+          'A umidade do solo está adequada em $markerId ($newHumidity%).',
+        );
+      } else if (newHumidity > 70) {
+        _sendLocalNotification(
+          'Solo Encharcado',
+          'A umidade do solo está muito alta em $markerId ($newHumidity%).',
+        );
+      }
+    }
+
+    // === Comparar estado da comporta ===
+    final oldGate = oldData['isGateOpen'] ?? false;
+    final newGate = newData['isGateOpen'] ?? false;
+    if (oldGate != newGate) {
+      if (newGate == true) {
+        _sendLocalNotification(
+          'Comporta Aberta',
+          'A comporta do $markerId foi aberta.',
+        );
+      } else {
+        _sendLocalNotification(
+          'Comporta Fechada',
+          'A comporta do $markerId foi fechada.',
+        );
+      }
     }
   }
 
