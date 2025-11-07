@@ -52,6 +52,12 @@ class _MyAppState extends State<MyApp> {
   final DatabaseReference waterPHRef = database.ref('ph');
   final DatabaseReference gateRef = database.ref('isGateOpen');
 
+  // NOVO: Chave global para acessar o ScaffoldMessenger
+  // Isso é necessário para mostrar o SnackBar de qualquer lugar,
+  // inclusive de dentro dos listeners do Firebase.
+  final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
+      GlobalKey<ScaffoldMessengerState>();
+
   @override
   void initState() {
     super.initState();
@@ -84,6 +90,10 @@ class _MyAppState extends State<MyApp> {
                     'isGateOpen': markerData['isGateOpen'] ?? false,
                   };
                   markers.add(_buildMarker(position, key, context));
+
+                  // NOVO: Inicia o listener para dados em tempo real
+                  // e verifica os dados assim que o marcador é carregado
+                  _readMarkerData(key);
                 });
               } else {
                 final markerId = 'marker_0';
@@ -103,6 +113,8 @@ class _MyAppState extends State<MyApp> {
                     .catchError(
                       (error) => print('Failed to add marker: $error'),
                     );
+                // NOVO: Inicia o listener para o novo marcador
+                _readMarkerData(markerId);
               }
             });
           })
@@ -125,6 +137,9 @@ class _MyAppState extends State<MyApp> {
         title: 'Target Location',
         snippet: 'Tap for controls',
         onTap: () {
+          // MODIFICADO: Não precisamos mais chamar _readMarkerData aqui
+          // porque ele já está sendo chamado no initState para todos os marcadores.
+          // O listener .onValue já garante que os dados estarão atualizados.
           _showMarkerDetails(context, id);
         },
       ),
@@ -153,7 +168,9 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _showMarkerDetails(BuildContext context, String markerId) {
-    _readMarkerData(markerId);
+    // MODIFICADO: A leitura de dados agora é constante (no initState),
+    // então aqui apenas mostramos o modal.
+    // _readMarkerData(markerId); // Esta linha não é mais necessária aqui.
 
     showModalBottomSheet(
       context: context,
@@ -418,26 +435,68 @@ class _MyAppState extends State<MyApp> {
           })
           .then((_) => print('Marker $markerId added to Firebase'))
           .catchError((error) => print('Failed to add marker: $error'));
+
+      // NOVO: Inicia o listener para o novo marcador
+      _readMarkerData(markerId);
     });
   }
 
+  // MODIFICADO: Esta função agora escuta E verifica os dados
   void _readMarkerData(String markerId) {
     database.ref('markers/$markerId').onValue.listen((event) {
       final data = event.snapshot.value as Map<dynamic, dynamic>?;
       if (data != null) {
-        setState(() {
-          markersState[markerId] = {
-            'humidity': data['humidity'] ?? 0,
-            'waterlevel': data['waterlevel'] ?? 0,
-            'isGateOpen': data['isGateOpen'] ?? false,
-            'waterFlow': data['waterFlow'] ?? 0,
-            'ph': data['ph'] ?? 0.0,
-          };
-        });
+        final markerDataMap = {
+          'humidity': data['humidity'] ?? 0,
+          'waterlevel': data['waterlevel'] ?? 0,
+          'isGateOpen': data['isGateOpen'] ?? false,
+          'waterFlow': data['waterFlow'] ?? 0,
+          'ph': data['ph'] ?? 0.0,
+        };
+
+        // Verifica se o widget ainda está montado antes de chamar setState
+        if (mounted) {
+          setState(() {
+            markersState[markerId] = markerDataMap;
+          });
+        }
+
+        // NOVO: Chama a função de verificação sempre que os dados mudam
+        _checkSensorValuesAndNotify(markerId, markerDataMap);
       }
     });
   }
 
+  // NOVO: Função dedicada para verificar os dados e enviar notificações (SnackBar)
+  void _checkSensorValuesAndNotify(String markerId, Map<String, dynamic> data) {
+    final phValue = (data['ph'] ?? 0.0).toDouble();
+    final waterLevelValue = (data['waterlevel'] ?? 0) as num;
+
+    // Lógica para o pH (baseado no seu modal: 6.0 a 8.0 é bom)
+    if (phValue < 6.0 && phValue > 0) {
+      // Ignora 0.0 que pode ser inicial
+      _sendLocalNotification(
+        'Alerta de pH Baixo',
+        'O pH no $markerId está muito baixo ($phValue)!',
+      );
+    } else if (phValue > 8.0) {
+      _sendLocalNotification(
+        'Alerta de pH Alto',
+        'O pH no $markerId está muito alto ($phValue)!',
+      );
+    }
+
+    // Lógica para Nível da Água (baseado no seu modal: 0 = Não, 1 = Sim)
+    // Se '0' significa nível baixo/sem água, então:
+    if (waterLevelValue == 0) {
+      _sendLocalNotification(
+        'Alerta de Nível da Água',
+        'Nível de água baixo (indisponível) no $markerId!',
+      );
+    }
+  }
+
+  // MODIFICADO: Lógica de notificação de sensores removida daqui
   void _writeMarkerData(
     String markerId,
     bool gateStatus,
@@ -453,16 +512,8 @@ class _MyAppState extends State<MyApp> {
         })
         .then((_) {
           print('Marker $markerId data updated in Firebase');
-          // Enviar notificação para exemplo
-          if (waterLevelValue > 80) {
-            _sendLocalNotification(
-              'Atenção',
-              'Nível de água alto no $markerId!',
-            );
-          }
-          if (humidityValue < 20) {
-            _sendLocalNotification('Atenção', 'Umidade baixa no $markerId!');
-          }
+          // A notificação sobre o portão permanece aqui,
+          // pois é um feedback direto da ação do usuário.
           if (gateStatus) {
             _sendLocalNotification(
               'Portão aberto',
@@ -480,8 +531,10 @@ class _MyAppState extends State<MyApp> {
         });
   }
 
+  // MODIFICADO: Usa a GlobalKey (_scaffoldMessengerKey) para mostrar o SnackBar
   void _sendLocalNotification(String title, String body) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    // Verifica se o currentState não é nulo antes de usar
+    _scaffoldMessengerKey.currentState?.showSnackBar(
       SnackBar(content: Text('$title: $body'), duration: Duration(seconds: 3)),
     );
   }
@@ -505,6 +558,8 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.green[700]),
+      // MODIFICADO: Atribui a GlobalKey ao MaterialApp
+      scaffoldMessengerKey: _scaffoldMessengerKey,
       home: Builder(
         builder: (BuildContext context) {
           return Scaffold(
