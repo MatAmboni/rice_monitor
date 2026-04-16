@@ -118,198 +118,241 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      body: Stack(
-        children: [
-          Container(
-            decoration: const BoxDecoration(
-              image: DecorationImage(
-                image: AssetImage('assets/rice_field.jpeg'),
-                fit: BoxFit.cover,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final bool isDesktop = constraints.maxWidth >= 1000;
+          final double formWidth = isDesktop ? 480 : 560;
+
+          final brandingContent = Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              _RegisterHeader(),
+              SizedBox(height: 24),
+              Text(
+                "Agricultura conectada com LoRa",
+                style: TextStyle(color: Colors.white70),
               ),
-            ),
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0x7A0E2E27), Color(0xC4091A15)],
+            ],
+          );
+
+          final formContent = ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: formWidth),
+            child: GlassCard(
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Criar uma nova conta',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      validator: _validateEmail,
+                      decoration: const InputDecoration(
+                        labelText: "Email",
+                        prefixIcon: Icon(
+                          Icons.email_outlined,
+                          color: AppTheme.primary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _passwordController,
+                      obscureText: _obscurePassword,
+                      validator: _validatePassword,
+                      decoration: InputDecoration(
+                        labelText: "Senha",
+                        prefixIcon: const Icon(
+                          Icons.lock_outline,
+                          color: AppTheme.primary,
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_off
+                                : Icons.visibility,
+                            color: AppTheme.primary,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _obscurePassword = !_obscurePassword;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _confirmPasswordController,
+                      obscureText: _obscureConfirmPassword,
+                      validator: _validateConfirmPassword,
+                      decoration: InputDecoration(
+                        labelText: "Confirmar senha",
+                        prefixIcon: const Icon(
+                          Icons.verified_user_outlined,
+                          color: AppTheme.primary,
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscureConfirmPassword
+                                ? Icons.visibility_off
+                                : Icons.visibility,
+                            color: AppTheme.primary,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _obscureConfirmPassword =
+                                  !_obscureConfirmPassword;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isLoading ? null : _register,
+                        icon: _isLoading
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.person_add_alt_1,
+                                color: Colors.white,
+                              ),
+                        label: Text(_isLoading ? "Cadastrando..." : "Cadastrar"),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const LoginScreen(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(
+                        Icons.arrow_back,
+                        color: AppTheme.primary,
+                      ),
+                      label: const Text(
+                        "Voltar para o Login",
+                        style: TextStyle(color: AppTheme.primary),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-          ),
+          );
 
-          Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(50),
-                    ),
-                    child: const Icon(
-                      Icons.eco_rounded,
-                      color: Colors.white,
-                      size: 64,
-                    ),
+          return Stack(
+            children: [
+              Container(
+                decoration: const BoxDecoration(
+                  image: DecorationImage(
+                    image: AssetImage('assets/rice_field.jpeg'),
+                    fit: BoxFit.cover,
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    "Criar Conta",
-                    style: TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      letterSpacing: 1.1,
+                ),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Color(0x7A0E2E27), Color(0xC4091A15)],
                     ),
                   ),
-                  const Text(
-                    "Bem-vindo ao Rice Monitor 🌾",
-                    style: TextStyle(fontSize: 16, color: Colors.white70),
-                  ),
-                  const SizedBox(height: 40),
-
-                  GlassCard(
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        children: [
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'Criar uma nova conta',
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.textDark,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          TextFormField(
-                            controller: _emailController,
-                            keyboardType: TextInputType.emailAddress,
-                            validator: _validateEmail,
-                            decoration: const InputDecoration(
-                              labelText: "Email",
-                              prefixIcon: Icon(
-                                Icons.email_outlined,
-                                color: AppTheme.primary,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          TextFormField(
-                            controller: _passwordController,
-                            obscureText: _obscurePassword,
-                            validator: _validatePassword,
-                            decoration: InputDecoration(
-                              labelText: "Senha",
-                              prefixIcon: const Icon(
-                                Icons.lock_outline,
-                                color: AppTheme.primary,
-                              ),
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _obscurePassword
-                                      ? Icons.visibility_off
-                                      : Icons.visibility,
-                                  color: AppTheme.primary,
-                                ),
-                                onPressed: () {
-                                  setState(() {
-                                    _obscurePassword = !_obscurePassword;
-                                  });
-                                },
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          TextFormField(
-                            controller: _confirmPasswordController,
-                            obscureText: _obscureConfirmPassword,
-                            validator: _validateConfirmPassword,
-                            decoration: InputDecoration(
-                              labelText: "Confirmar senha",
-                              prefixIcon: const Icon(
-                                Icons.verified_user_outlined,
-                                color: AppTheme.primary,
-                              ),
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _obscureConfirmPassword
-                                      ? Icons.visibility_off
-                                      : Icons.visibility,
-                                  color: AppTheme.primary,
-                                ),
-                                onPressed: () {
-                                  setState(() {
-                                    _obscureConfirmPassword =
-                                        !_obscureConfirmPassword;
-                                  });
-                                },
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              onPressed: _isLoading ? null : _register,
-                              icon: _isLoading
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(
-                                      Icons.person_add_alt_1,
-                                      color: Colors.white,
-                                    ),
-                              label: Text(
-                                _isLoading ? "Cadastrando..." : "Cadastrar",
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          TextButton.icon(
-                            onPressed: () {
-                              Navigator.pushReplacement(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const LoginScreen(),
-                                ),
-                              );
-                            },
-                            icon: const Icon(
-                              Icons.arrow_back,
-                              color: AppTheme.primary,
-                            ),
-                            label: const Text(
-                              "Voltar para o Login",
-                              style: TextStyle(color: AppTheme.primary),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  const Text(
-                    "Agricultura conectada com LoRa",
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
-        ],
+              SafeArea(
+                child: Center(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isDesktop ? 36 : 24,
+                      vertical: isDesktop ? 28 : 48,
+                    ),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1180),
+                      child: isDesktop
+                          ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(child: brandingContent),
+                                const SizedBox(width: 42),
+                                formContent,
+                              ],
+                            )
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                brandingContent,
+                                const SizedBox(height: 32),
+                                formContent,
+                              ],
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
+    );
+  }
+}
+
+class _RegisterHeader extends StatelessWidget {
+  const _RegisterHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(50),
+          ),
+          child: const Icon(Icons.eco_rounded, color: Colors.white, size: 64),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          "Criar Conta",
+          style: TextStyle(
+            fontSize: 30,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+            letterSpacing: 1.1,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const Text(
+          "Bem-vindo ao Rice Monitor",
+          style: TextStyle(fontSize: 16, color: Colors.white70),
+          textAlign: TextAlign.center,
+        ),
+      ],
     );
   }
 }

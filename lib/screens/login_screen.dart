@@ -218,186 +218,229 @@ class _LoginScreenState extends State<LoginScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      body: Stack(
-        children: [
-          Container(
-            decoration: const BoxDecoration(
-              image: DecorationImage(
-                image: AssetImage('assets/rice_field.jpeg'),
-                fit: BoxFit.cover,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final bool isDesktop = constraints.maxWidth >= 1000;
+          final double formWidth = isDesktop ? 460 : 560;
+
+          final brandingContent = Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              _BrandHeader(),
+              SizedBox(height: 24),
+              Text(
+                "Sistema de gerenciamento hídrico",
+                style: TextStyle(color: Colors.white70),
               ),
-            ),
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0x8A0E2E27), Color(0xCC091A15)],
+            ],
+          );
+
+          final formContent = ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: formWidth),
+            child: GlassCard(
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Entrar na plataforma',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      validator: _validateEmail,
+                      decoration: const InputDecoration(
+                        labelText: "Email",
+                        prefixIcon: Icon(
+                          Icons.email_outlined,
+                          color: AppTheme.primary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _passwordController,
+                      obscureText: _obscurePassword,
+                      validator: _validatePassword,
+                      decoration: InputDecoration(
+                        labelText: "Senha",
+                        prefixIcon: const Icon(
+                          Icons.lock_outline,
+                          color: AppTheme.primary,
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_off
+                                : Icons.visibility,
+                            color: AppTheme.primary,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _obscurePassword = !_obscurePassword;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: _rememberEmail,
+                          onChanged: (value) {
+                            setState(() {
+                              _rememberEmail = value ?? false;
+                            });
+                          },
+                        ),
+                        const Expanded(child: Text('Lembrar meu email')),
+                        TextButton(
+                          onPressed: _showForgotPasswordDialog,
+                          child: const Text('Esqueci a senha'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isLoading ? null : _login,
+                        icon: _isLoading
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.login, color: Colors.white),
+                        label: Text(_isLoading ? "Entrando..." : "Entrar"),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const RegisterScreen(),
+                          ),
+                        );
+                      },
+                      child: const Text(
+                        "Não tem conta? Cadastre-se",
+                        style: TextStyle(color: AppTheme.primary),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-          ),
+          );
 
-          Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(50),
-                    ),
-                    child: const Icon(
-                      Icons.water_drop_rounded,
-                      color: Colors.white,
-                      size: 64,
-                    ),
+          return Stack(
+            children: [
+              Container(
+                decoration: const BoxDecoration(
+                  image: DecorationImage(
+                    image: AssetImage('assets/rice_field.jpeg'),
+                    fit: BoxFit.cover,
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    "Rice Monitor",
-                    style: TextStyle(
-                      fontSize: 34,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      letterSpacing: 1.2,
+                ),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Color(0x8A0E2E27), Color(0xCC091A15)],
                     ),
                   ),
-                  const Text(
-                    "Sistema Inteligente de Irrigação",
-                    style: TextStyle(fontSize: 16, color: Colors.white70),
-                  ),
-                  const SizedBox(height: 40),
-
-                  GlassCard(
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        children: [
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'Entrar na plataforma',
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.textDark,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          TextFormField(
-                            controller: _emailController,
-                            keyboardType: TextInputType.emailAddress,
-                            validator: _validateEmail,
-                            decoration: const InputDecoration(
-                              labelText: "Email",
-                              prefixIcon: Icon(
-                                Icons.email_outlined,
-                                color: AppTheme.primary,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          TextFormField(
-                            controller: _passwordController,
-                            obscureText: _obscurePassword,
-                            validator: _validatePassword,
-                            decoration: InputDecoration(
-                              labelText: "Senha",
-                              prefixIcon: const Icon(
-                                Icons.lock_outline,
-                                color: AppTheme.primary,
-                              ),
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _obscurePassword
-                                      ? Icons.visibility_off
-                                      : Icons.visibility,
-                                  color: AppTheme.primary,
-                                ),
-                                onPressed: () {
-                                  setState(() {
-                                    _obscurePassword = !_obscurePassword;
-                                  });
-                                },
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Checkbox(
-                                value: _rememberEmail,
-                                onChanged: (value) {
-                                  setState(() {
-                                    _rememberEmail = value ?? false;
-                                  });
-                                },
-                              ),
-                              const Expanded(child: Text('Lembrar meu email')),
-                              TextButton(
-                                onPressed: _showForgotPasswordDialog,
-                                child: const Text('Esqueci a senha'),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 24),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              onPressed: _isLoading ? null : _login,
-                              icon: _isLoading
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(
-                                      Icons.login,
-                                      color: Colors.white,
-                                    ),
-                              label: Text(
-                                _isLoading ? "Entrando..." : "Entrar",
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          TextButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const RegisterScreen(),
-                                ),
-                              );
-                            },
-                            child: const Text(
-                              "Não tem conta? Cadastre-se",
-                              style: TextStyle(color: AppTheme.primary),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-                  const Text(
-                    "Sistema de gerenciamento hídrico",
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
-        ],
+              SafeArea(
+                child: Center(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isDesktop ? 36 : 24,
+                      vertical: isDesktop ? 28 : 48,
+                    ),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1180),
+                      child: isDesktop
+                          ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(child: brandingContent),
+                                const SizedBox(width: 42),
+                                formContent,
+                              ],
+                            )
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                brandingContent,
+                                const SizedBox(height: 32),
+                                formContent,
+                              ],
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
+    );
+  }
+}
+
+class _BrandHeader extends StatelessWidget {
+  const _BrandHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(50),
+          ),
+          child: const Icon(
+            Icons.water_drop_rounded,
+            color: Colors.white,
+            size: 64,
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          "Rice Monitor",
+          style: TextStyle(
+            fontSize: 34,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+            letterSpacing: 1.2,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const Text(
+          "Sistema Inteligente de Irrigação",
+          style: TextStyle(fontSize: 16, color: Colors.white70),
+          textAlign: TextAlign.center,
+        ),
+      ],
     );
   }
 }

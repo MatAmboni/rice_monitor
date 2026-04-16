@@ -145,11 +145,19 @@ class _MyAppState extends State<MyApp> {
               if (data != null) {
                 data.forEach((key, value) {
                   final markerData = value as Map<dynamic, dynamic>;
+                  final latitude =
+                      (markerData['latitude'] as num?)?.toDouble() ??
+                      _center.latitude;
+                  final longitude =
+                      (markerData['longitude'] as num?)?.toDouble() ??
+                      _center.longitude;
                   final position = LatLng(
-                    markerData['latitude'] as double,
-                    markerData['longitude'] as double,
+                    latitude,
+                    longitude,
                   );
                   markersState[key] = {
+                    'latitude': latitude,
+                    'longitude': longitude,
                     'humidity': _asHumidityBool(markerData['humidity']),
                     'waterlevel': _asWaterLevelBool(markerData['waterlevel']),
                     'waterFlow':
@@ -257,11 +265,7 @@ class _MyAppState extends State<MyApp> {
               ),
             ],
           ),
-          child: const Icon(
-            Icons.location_on,
-            color: Colors.white,
-            size: 28,
-          ),
+          child: const Icon(Icons.location_on, color: Colors.white, size: 28),
         ),
       ),
     );
@@ -270,8 +274,10 @@ class _MyAppState extends State<MyApp> {
   List<fm.Marker> _buildWebMarkers() {
     return markersState.entries.map((entry) {
       final markerData = entry.value;
-      final latitude = markerData['latitude'] as double? ?? _center.latitude;
-      final longitude = markerData['longitude'] as double? ?? _center.longitude;
+      final latitude =
+          (markerData['latitude'] as num?)?.toDouble() ?? _center.latitude;
+      final longitude =
+          (markerData['longitude'] as num?)?.toDouble() ?? _center.longitude;
       return _buildWebMarker(entry.key, ll.LatLng(latitude, longitude));
     }).toList();
   }
@@ -761,7 +767,13 @@ class _MyAppState extends State<MyApp> {
         .listen((event) {
           final data = event.snapshot.value as Map<dynamic, dynamic>?;
           if (data != null) {
+            final latitude =
+                (data['latitude'] as num?)?.toDouble() ?? _center.latitude;
+            final longitude =
+                (data['longitude'] as num?)?.toDouble() ?? _center.longitude;
             final newMarkerData = {
+              'latitude': latitude,
+              'longitude': longitude,
               'humidity': _asHumidityBool(data['humidity']),
               'waterlevel': _asWaterLevelBool(data['waterlevel']),
               'isGateOpen': data['isGateOpen'] ?? false,
@@ -960,31 +972,34 @@ class _MyAppState extends State<MyApp> {
         .catchError((error) => print('Failed to remove marker: $error'));
   }
 
-  Widget _buildTopStatusPanel() {
+  Widget _buildTopStatusPanel({double? maxWidth}) {
     final int markerCount = markersState.length;
     final int openGates = markersState.values
         .where((marker) => marker['isGateOpen'] == true)
         .length;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-      child: GlassCard(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            BadgeChip(
-              icon: Icons.location_on,
-              text: '$markerCount marcadores',
-              color: Colors.teal.shade700,
-            ),
-            BadgeChip(
-              icon: Icons.door_front_door,
-              text: '$openGates comportas abertas',
-              color: Colors.blue.shade700,
-            ),
-          ],
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth ?? double.infinity),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+        child: GlassCard(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              BadgeChip(
+                icon: Icons.location_on,
+                text: '$markerCount marcadores',
+                color: Colors.teal.shade700,
+              ),
+              BadgeChip(
+                icon: Icons.door_front_door,
+                text: '$openGates comportas abertas',
+                color: Colors.blue.shade700,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1082,6 +1097,41 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
+  fm.TileLayer _buildWebBaseTileLayer() {
+    switch (_mapType) {
+      case MapType.satellite:
+      case MapType.hybrid:
+        return fm.TileLayer(
+          urlTemplate:
+              'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          userAgentPackageName: 'com.amboni.flutterApplication1',
+        );
+      case MapType.normal:
+      default:
+        return fm.TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.amboni.flutterApplication1',
+        );
+    }
+  }
+
+  List<Widget> _buildWebMapLayers() {
+    final layers = <Widget>[_buildWebBaseTileLayer()];
+
+    if (_mapType == MapType.hybrid) {
+      layers.add(
+        fm.TileLayer(
+          urlTemplate:
+              'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+          userAgentPackageName: 'com.amboni.flutterApplication1',
+        ),
+      );
+    }
+
+    layers.add(fm.MarkerLayer(markers: _buildWebMarkers()));
+    return layers;
+  }
+
   void _showRecentAlertsSheet() {
     showModalBottomSheet(
       context: context,
@@ -1162,164 +1212,174 @@ class _MyAppState extends State<MyApp> {
       home: Builder(
         builder: (BuildContext context) {
           return Scaffold(
-            appBar: AppBar(
-              title: const Text('Rice Monitor'),
-              elevation: 2,
-              actions: [
-                PopupMenuButton<MapType>(
-                  tooltip: 'Tipo de mapa',
-                  icon: const Icon(Icons.layers_outlined),
-                  onSelected: (selectedType) {
-                    setState(() {
-                      _mapType = selectedType;
-                    });
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(
-                      value: MapType.satellite,
-                      child: Text('Satelite'),
-                    ),
-                    PopupMenuItem(
-                      value: MapType.hybrid,
-                      child: Text('Hibrido'),
-                    ),
-                    PopupMenuItem(value: MapType.normal, child: Text('Normal')),
-                  ],
-                ),
-                IconButton(
-                  icon: const Icon(Icons.notifications_outlined),
-                  onPressed: _showRecentAlertsSheet,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.logout),
-                  onPressed: () {
-                    showDialog<void>(
-                      context: context,
-                      builder: (dialogContext) {
-                        return AlertDialog(
-                          title: const Text('Sair da sessao'),
-                          content: const Text(
-                            'Deseja realmente sair e voltar para o login?',
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(dialogContext),
-                              child: const Text('Cancelar'),
-                            ),
-                            ElevatedButton(
-                              onPressed: () {
-                                Navigator.pop(dialogContext);
-                                Navigator.pushReplacement(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => const LoginScreen(),
-                                  ),
-                                );
-                              },
-                              child: const Text('Sair'),
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.dashboard),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DashboardScreen(
-                          markersRef: database.ref('markers'),
+          appBar: AppBar(
+            title: const Text('Rice Monitor'),
+            elevation: 2,
+            actions: [
+              PopupMenuButton<MapType>(
+                tooltip: 'Tipo de mapa',
+                icon: const Icon(Icons.layers_outlined),
+                onSelected: (selectedType) {
+                  setState(() {
+                    _mapType = selectedType;
+                  });
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: MapType.satellite,
+                    child: Text('Satelite'),
+                  ),
+                  PopupMenuItem(value: MapType.hybrid, child: Text('Hibrido')),
+                  PopupMenuItem(value: MapType.normal, child: Text('Normal')),
+                ],
+              ),
+              IconButton(
+                icon: const Icon(Icons.notifications_outlined),
+                onPressed: _showRecentAlertsSheet,
+              ),
+              IconButton(
+                icon: const Icon(Icons.logout),
+                onPressed: () {
+                  showDialog<void>(
+                    context: context,
+                    builder: (dialogContext) {
+                      return AlertDialog(
+                        title: const Text('Sair da sessao'),
+                        content: const Text(
+                          'Deseja realmente sair e voltar para o login?',
                         ),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-            body: Builder(
-              builder: (scaffoldContext) {
-                return Stack(
-                  children: [
-                    if (kIsWeb)
-                      Positioned.fill(
-                        child: fm.FlutterMap(
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(dialogContext),
+                            child: const Text('Cancelar'),
+                          ),
+                          ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(dialogContext);
+                              Navigator.pushReplacement(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const LoginScreen(),
+                                ),
+                              );
+                            },
+                            child: const Text('Sair'),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.dashboard),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          DashboardScreen(markersRef: database.ref('markers')),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+          body: Builder(
+            builder: (scaffoldContext) {
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  final bool isDesktopWeb =
+                      kIsWeb && constraints.maxWidth >= 1100;
+
+                  final Widget mapWidget = kIsWeb
+                      ? fm.FlutterMap(
                           mapController: _webMapController,
                           options: fm.MapOptions(
                             initialCenter: _webCenter,
                             initialZoom: 15,
                             onTap: (_, __) {
-                              _customInfoWindowController.hideInfoWindow
-                                  ?.call();
+                              _customInfoWindowController.hideInfoWindow?.call();
                             },
                           ),
-                          children: [
-                            fm.TileLayer(
-                              urlTemplate:
-                                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                              userAgentPackageName:
-                                  'com.amboni.flutterApplication1',
-                            ),
-                            fm.MarkerLayer(markers: _buildWebMarkers()),
-                          ],
+                          children: _buildWebMapLayers(),
+                        )
+                      : GoogleMap(
+                          onMapCreated: (controller) {
+                            mapController = controller;
+                            _customInfoWindowController.googleMapController =
+                                controller;
+                            _isMapCreated = true;
+                            _tryCenterMapOnFirstMarker();
+                          },
+                          onTap: (_) {
+                            _customInfoWindowController.hideInfoWindow?.call();
+                          },
+                          onCameraMove: (_) {
+                            _customInfoWindowController.onCameraMove?.call();
+                          },
+                          markers: markers
+                              .map(
+                                (m) => _buildMarker(
+                                  m.position,
+                                  m.markerId.value,
+                                  scaffoldContext,
+                                ),
+                              )
+                              .toSet(),
+                          initialCameraPosition: CameraPosition(
+                            target: _center,
+                            zoom: 15.0,
+                          ),
+                          myLocationEnabled: false,
+                          myLocationButtonEnabled: false,
+                          mapType: _mapType,
+                        );
+
+                  return Padding(
+                    padding: EdgeInsets.all(isDesktopWeb ? 16 : 0),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: isDesktopWeb ? 1500 : double.infinity,
                         ),
-                      )
-                    else
-                      GoogleMap(
-                        onMapCreated: (controller) {
-                          mapController = controller;
-                          _customInfoWindowController.googleMapController =
-                              controller;
-                          _isMapCreated = true;
-                          _tryCenterMapOnFirstMarker();
-                        },
-                        onTap: (_) {
-                          _customInfoWindowController.hideInfoWindow?.call();
-                        },
-                        onCameraMove: (_) {
-                          _customInfoWindowController.onCameraMove?.call();
-                        },
-                        markers: markers
-                            .map(
-                              (m) => _buildMarker(
-                                m.position,
-                                m.markerId.value,
-                                scaffoldContext,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(
+                            isDesktopWeb ? 20 : 0,
+                          ),
+                          child: Stack(
+                            children: [
+                              Positioned.fill(child: mapWidget),
+                              if (!kIsWeb)
+                                CustomInfoWindow(
+                                  controller: _customInfoWindowController,
+                                  height: 130,
+                                  width: 260,
+                                  offset: 40,
+                                ),
+                              SafeArea(
+                                child: Align(
+                                  alignment: Alignment.topCenter,
+                                  child: _buildTopStatusPanel(
+                                    maxWidth: isDesktopWeb ? 920 : null,
+                                  ),
+                                ),
                               ),
-                            )
-                            .toSet(),
-                        initialCameraPosition: CameraPosition(
-                          target: _center,
-                          zoom: 15.0,
+                              Positioned(
+                                right: isDesktopWeb ? 22 : 16,
+                                bottom: isDesktopWeb ? 26 : 20,
+                                child: _buildMapQuickActions(scaffoldContext),
+                              ),
+                            ],
+                          ),
                         ),
-                        myLocationEnabled: false,
-                        myLocationButtonEnabled: false,
-                        mapType: _mapType,
-                      ),
-                    if (!kIsWeb)
-                      CustomInfoWindow(
-                        controller: _customInfoWindowController,
-                        height: 130,
-                        width: 260,
-                        offset: 40,
-                      ),
-                    SafeArea(
-                      child: Align(
-                        alignment: Alignment.topCenter,
-                        child: _buildTopStatusPanel(),
                       ),
                     ),
-                    Positioned(
-                      right: 16,
-                      bottom: 20,
-                      child: _buildMapQuickActions(scaffoldContext),
-                    ),
-                  ],
-                );
-              },
-            ),
+                  );
+                },
+              );
+            },
+          ),
           );
         },
       ),

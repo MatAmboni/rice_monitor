@@ -233,8 +233,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           }).toList();
 
           final sortedEntries = _applySort(filteredEntries);
+          final bool isDesktop = MediaQuery.of(context).size.width >= 1100;
 
-          return ListView.builder(
+          final listView = ListView.builder(
             padding: const EdgeInsets.all(8.0),
             itemCount: sortedEntries.length + 2,
             itemBuilder: (context, index) {
@@ -308,7 +309,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                           ],
                         ),
-                      
                       ],
                     ),
                   ),
@@ -553,6 +553,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               );
             },
+          );
+
+          if (!isDesktop) {
+            return listView;
+          }
+
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1180),
+              child: listView,
+            ),
           );
         },
       ),
