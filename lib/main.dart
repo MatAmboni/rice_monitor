@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'screens/dashboard_screen.dart';
+import 'utils/app_theme.dart';
+import 'utils/ui_components.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,8 +20,10 @@ class RootApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
+      theme: AppTheme.light,
+      // home: MyApp(),
       home: LoginScreen(),
     );
   }
@@ -35,6 +41,15 @@ FirebaseDatabase database = FirebaseDatabase.instance;
 class _MyAppState extends State<MyApp> {
   late GoogleMapController mapController;
   Map<String, Map<String, dynamic>> markersState = {};
+  final Map<String, StreamSubscription<DatabaseEvent>> _markerSubscriptions =
+      {};
+  StreamSubscription<DatabaseEvent>? _humiditySub;
+  StreamSubscription<DatabaseEvent>? _waterLevelSub;
+  StreamSubscription<DatabaseEvent>? _waterFlowSub;
+  StreamSubscription<DatabaseEvent>? _waterPhSub;
+  MapType _mapType = MapType.satellite;
+  bool _isMapCreated = false;
+  bool _hasCenteredOnFirstMarker = false;
   int humidity = 0;
   int waterlevel = 0;
   int waterflow = 0;
@@ -95,6 +110,7 @@ class _MyAppState extends State<MyApp> {
                   // e verifica os dados assim que o marcador é carregado
                   _readMarkerData(key);
                 });
+                _tryCenterMapOnFirstMarker();
               } else {
                 final markerId = 'marker_0';
                 markers.add(_buildMarker(_center, markerId, context));
@@ -115,6 +131,7 @@ class _MyAppState extends State<MyApp> {
                     );
                 // NOVO: Inicia o listener para o novo marcador
                 _readMarkerData(markerId);
+                _tryCenterMapOnFirstMarker();
               }
             });
           })
@@ -219,7 +236,7 @@ class _MyAppState extends State<MyApp> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(color: phIconColor, width: 3.0),
-                color: phIconColor.withOpacity(0.1),
+                color: phIconColor.withValues(alpha: 0.1),
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -254,43 +271,76 @@ class _MyAppState extends State<MyApp> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  Row(
-                    children: [
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
+                  const SizedBox(height: 16.0),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final bool useStackedLayout = constraints.maxWidth < 390;
+
+                      if (useStackedLayout) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildInfoRow(
+                              Icons.waves,
+                              waterFlowColor,
+                              'Fluxo de Água',
+                              waterFlowText,
+                            ),
+                            _buildInfoRow(
+                              Icons.layers,
+                              availableWaterColor,
+                              'Água Disponível',
+                              availableWaterText,
+                            ),
+                            _buildInfoRow(
+                              Icons.opacity,
+                              humidityColor,
+                              'Umidade do Solo',
+                              humidityText,
+                            ),
+                            const SizedBox(height: 12),
+                            Center(child: phStatusCircle),
+                          ],
+                        );
+                      }
+
+                      return Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const SizedBox(height: 16.0),
-                          _buildInfoRow(
-                            Icons.waves,
-                            waterFlowColor,
-                            'Fluxo de Água', // Traduzido
-                            waterFlowText,
+                          Expanded(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildInfoRow(
+                                  Icons.waves,
+                                  waterFlowColor,
+                                  'Fluxo de Água',
+                                  waterFlowText,
+                                ),
+                                _buildInfoRow(
+                                  Icons.layers,
+                                  availableWaterColor,
+                                  'Água Disponível',
+                                  availableWaterText,
+                                ),
+                                _buildInfoRow(
+                                  Icons.opacity,
+                                  humidityColor,
+                                  'Umidade do Solo',
+                                  humidityText,
+                                ),
+                              ],
+                            ),
                           ),
-
-                          _buildInfoRow(
-                            Icons.layers,
-                            availableWaterColor,
-                            'Água Disponível', // Traduzido
-                            availableWaterText,
-                          ),
-
-                          _buildInfoRow(
-                            Icons.opacity,
-                            humidityColor, // Cor dinâmica
-                            'Umidade do Solo', // Traduzido
-                            humidityText, // Texto dinâmico
+                          const SizedBox(width: 12),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4.0),
+                            child: phStatusCircle,
                           ),
                         ],
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4.0),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [const Spacer(), phStatusCircle],
-                        ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 16.0),
                   Row(
@@ -334,11 +384,13 @@ class _MyAppState extends State<MyApp> {
   Widget _buildInfoRow(IconData icon, Color color, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 4,
         children: [
           Icon(icon, color: color, size: 22),
-          const SizedBox(width: 12.0),
-          Text('$label: ', style: const TextStyle(fontSize: 16)),
+          Text('$label:', style: const TextStyle(fontSize: 16)),
           Text(
             value,
             style: const TextStyle(
@@ -369,7 +421,7 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _readHumidity() {
-    humidityRef.onValue.listen((event) {
+    _humiditySub = humidityRef.onValue.listen((event) {
       final data = event.snapshot.value as int?;
       if (data != null) {
         setState(() {
@@ -380,7 +432,7 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _readWaterLevel() {
-    waterLevelRef.onValue.listen((event) {
+    _waterLevelSub = waterLevelRef.onValue.listen((event) {
       final data = event.snapshot.value as int?;
       if (data != null) {
         setState(() {
@@ -391,7 +443,7 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _readWaterFlow() {
-    waterFlowRef.onValue.listen((event) {
+    _waterFlowSub = waterFlowRef.onValue.listen((event) {
       final data = event.snapshot.value as int?;
       if (data != null) {
         setState(() {
@@ -402,13 +454,32 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _readWaterPh() {
-    waterPHRef.onValue.listen((event) {
+    _waterPhSub = waterPHRef.onValue.listen((event) {
       final data = event.snapshot.value as int?;
       if (data != null) {
         setState(() {
           ph = data;
         });
       }
+    });
+  }
+
+  void _tryCenterMapOnFirstMarker() {
+    if (_hasCenteredOnFirstMarker || !_isMapCreated || markers.isEmpty) {
+      return;
+    }
+
+    _hasCenteredOnFirstMarker = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || markers.isEmpty) {
+        return;
+      }
+
+      mapController.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(target: markers.first.position, zoom: 16.0),
+        ),
+      );
     });
   }
 
@@ -442,31 +513,47 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _readMarkerData(String markerId) {
-    database.ref('markers/$markerId').onValue.listen((event) {
-      final data = event.snapshot.value as Map<dynamic, dynamic>?;
-      if (data != null) {
-        final newMarkerData = {
-          'humidity': data['humidity'] ?? 0,
-          'waterlevel': data['waterlevel'] ?? 0,
-          'isGateOpen': data['isGateOpen'] ?? false,
-          'waterFlow': data['waterFlow'] ?? 0,
-          'ph': (data['ph'] ?? 0).toDouble(),
-        };
+    _markerSubscriptions[markerId]?.cancel();
+    _markerSubscriptions[markerId] = database
+        .ref('markers/$markerId')
+        .onValue
+        .listen((event) {
+          final data = event.snapshot.value as Map<dynamic, dynamic>?;
+          if (data != null) {
+            final newMarkerData = {
+              'humidity': data['humidity'] ?? 0,
+              'waterlevel': data['waterlevel'] ?? 0,
+              'isGateOpen': data['isGateOpen'] ?? false,
+              'waterFlow': data['waterFlow'] ?? 0,
+              'ph': (data['ph'] ?? 0).toDouble(),
+            };
 
-        final oldMarkerData = Map<String, dynamic>.from(
-          markersState[markerId] ?? {},
-        );
+            final oldMarkerData = Map<String, dynamic>.from(
+              markersState[markerId] ?? {},
+            );
 
-        if (mounted) {
-          setState(() {
-            markersState[markerId] = newMarkerData;
-          });
-        }
+            if (mounted) {
+              setState(() {
+                markersState[markerId] = newMarkerData;
+              });
+            }
 
-        // Só notifica se algo mudou
-        _checkSensorValuesAndNotify(markerId, oldMarkerData, newMarkerData);
-      }
-    });
+            // Só notifica se algo mudou
+            _checkSensorValuesAndNotify(markerId, oldMarkerData, newMarkerData);
+          }
+        });
+  }
+
+  @override
+  void dispose() {
+    _humiditySub?.cancel();
+    _waterLevelSub?.cancel();
+    _waterFlowSub?.cancel();
+    _waterPhSub?.cancel();
+    for (final sub in _markerSubscriptions.values) {
+      sub.cancel();
+    }
+    super.dispose();
   }
 
   void _checkSensorValuesAndNotify(
@@ -619,28 +706,118 @@ class _MyAppState extends State<MyApp> {
         .remove()
         .then((_) {
           print('Marker $markerId removed from Firebase');
+          _markerSubscriptions.remove(markerId)?.cancel();
           setState(() {
             markers.removeWhere((marker) => marker.markerId.value == markerId);
             markersState.remove(markerId);
           });
         })
+        // ignore: invalid_return_type_for_catch_error
         .catchError((error) => print('Failed to remove marker: $error'));
+  }
+
+  Widget _buildTopStatusPanel() {
+    final int markerCount = markersState.length;
+    final int openGates = markersState.values
+        .where((marker) => marker['isGateOpen'] == true)
+        .length;
+    final bool waterAvailable = waterlevel == 1;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      child: GlassCard(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            BadgeChip(
+              icon: Icons.location_on,
+              text: '$markerCount marcadores',
+              color: Colors.teal.shade700,
+            ),
+            BadgeChip(
+              icon: Icons.door_front_door,
+              text: '$openGates comportas abertas',
+              color: Colors.blue.shade700,
+            ),
+            BadgeChip(
+              icon: waterAvailable ? Icons.water_drop : Icons.warning_amber,
+              text: waterAvailable ? 'Agua disponivel' : 'Agua indisponivel',
+              color: waterAvailable
+                  ? Colors.green.shade700
+                  : Colors.red.shade700,
+            ),
+            BadgeChip(
+              icon: Icons.science,
+              text: 'pH atual: $ph',
+              color: Colors.orange.shade700,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMapQuickActions(BuildContext scaffoldContext) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FloatingActionButton.small(
+          heroTag: 'centerMap',
+          onPressed: () {
+            mapController.animateCamera(
+              CameraUpdate.newCameraPosition(
+                CameraPosition(target: _center, zoom: 15),
+              ),
+            );
+          },
+          child: const Icon(Icons.my_location),
+        ),
+        const SizedBox(height: 10),
+        FloatingActionButton(
+          heroTag: 'addMarker',
+          onPressed: () => _addNewMarker(scaffoldContext),
+          child: const Icon(Icons.add_location_alt),
+        ),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.green[700]),
+      theme: AppTheme.light,
       // MODIFICADO: Atribui a GlobalKey ao MaterialApp
       scaffoldMessengerKey: _scaffoldMessengerKey,
       home: Builder(
         builder: (BuildContext context) {
           return Scaffold(
             appBar: AppBar(
-              title: const Text('Rice Monitor App'),
+              title: const Text('Rice Monitor'),
               elevation: 2,
               actions: [
+                PopupMenuButton<MapType>(
+                  tooltip: 'Tipo de mapa',
+                  icon: const Icon(Icons.layers_outlined),
+                  onSelected: (selectedType) {
+                    setState(() {
+                      _mapType = selectedType;
+                    });
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: MapType.satellite,
+                      child: Text('Satelite'),
+                    ),
+                    PopupMenuItem(
+                      value: MapType.hybrid,
+                      child: Text('Hibrido'),
+                    ),
+                    PopupMenuItem(value: MapType.normal, child: Text('Normal')),
+                  ],
+                ),
                 IconButton(
                   icon: const Icon(Icons.logout),
                   onPressed: () {
@@ -669,32 +846,43 @@ class _MyAppState extends State<MyApp> {
             ),
             body: Builder(
               builder: (scaffoldContext) {
-                return GoogleMap(
-                  onMapCreated: (controller) => mapController = controller,
-                  markers: markers
-                      .map(
-                        (m) => _buildMarker(
-                          m.position,
-                          m.markerId.value,
-                          scaffoldContext,
-                        ),
-                      )
-                      .toSet(),
-                  initialCameraPosition: CameraPosition(
-                    target: _center,
-                    zoom: 15.0,
-                  ),
-                  myLocationEnabled: false,
-                  myLocationButtonEnabled: false,
-                  mapType: MapType.satellite,
-                );
-              },
-            ),
-            floatingActionButton: Builder(
-              builder: (scaffoldContext) {
-                return FloatingActionButton(
-                  onPressed: () => _addNewMarker(scaffoldContext),
-                  child: const Icon(Icons.add_location_alt),
+                return Stack(
+                  children: [
+                    GoogleMap(
+                      onMapCreated: (controller) {
+                        mapController = controller;
+                        _isMapCreated = true;
+                        _tryCenterMapOnFirstMarker();
+                      },
+                      markers: markers
+                          .map(
+                            (m) => _buildMarker(
+                              m.position,
+                              m.markerId.value,
+                              scaffoldContext,
+                            ),
+                          )
+                          .toSet(),
+                      initialCameraPosition: CameraPosition(
+                        target: _center,
+                        zoom: 15.0,
+                      ),
+                      myLocationEnabled: false,
+                      myLocationButtonEnabled: false,
+                      mapType: _mapType,
+                    ),
+                    SafeArea(
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: _buildTopStatusPanel(),
+                      ),
+                    ),
+                    Positioned(
+                      right: 16,
+                      bottom: 20,
+                      child: _buildMapQuickActions(scaffoldContext),
+                    ),
+                  ],
                 );
               },
             ),
