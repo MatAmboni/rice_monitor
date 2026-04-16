@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:custom_info_window/custom_info_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -82,6 +83,8 @@ bool _asWaterLevelBool(dynamic value) {
 
 class _MyAppState extends State<MyApp> {
   late GoogleMapController mapController;
+  final CustomInfoWindowController _customInfoWindowController =
+      CustomInfoWindowController();
   Map<String, Map<String, dynamic>> markersState = {};
   final Map<String, StreamSubscription<DatabaseEvent>> _markerSubscriptions =
       {};
@@ -184,26 +187,26 @@ class _MyAppState extends State<MyApp> {
   }
 
   Marker _buildMarker(LatLng position, String id, BuildContext context) {
+    final markerData = markersState[id] ?? const <String, dynamic>{};
+    final bool isGateOpen = markerData['isGateOpen'] == true;
+
     return Marker(
       markerId: MarkerId(id),
+      consumeTapEvents: true,
       draggable: true,
       position: position,
       icon: BitmapDescriptor.defaultMarkerWithHue(
-        markersState[id]?['isGateOpen'] == true
+        isGateOpen
             ? BitmapDescriptor.hueBlue
             : BitmapDescriptor.hueRed,
       ),
-      infoWindow: InfoWindow(
-        title: 'Target Location',
-        snippet: 'Tap for controls',
-        onTap: () {
-          // MODIFICADO: Não precisamos mais chamar _readMarkerData aqui
-          // porque ele já está sendo chamado no initState para todos os marcadores.
-          // O listener .onValue já garante que os dados estarão atualizados.
-          _showMarkerDetails(context, id);
-        },
-      ),
+      infoWindow: InfoWindow.noText,
+      onTap: () {
+        _centerMapOnMarker(position);
+        _showRoundedMarkerInfoWindow(id, position);
+      },
       onDragEnd: (newPosition) {
+        _customInfoWindowController.hideInfoWindow?.call();
         database
             .ref('markers/$id')
             .update({
@@ -224,6 +227,105 @@ class _MyAppState extends State<MyApp> {
           }).toSet();
         });
       },
+    );
+  }
+
+  void _centerMapOnMarker(LatLng position) {
+    if (!_isMapCreated) {
+      return;
+    }
+
+    mapController.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(target: position, zoom: 16.5),
+      ),
+    );
+  }
+
+  void _showRoundedMarkerInfoWindow(String markerId, LatLng position) {
+    final markerData = markersState[markerId] ?? const <String, dynamic>{};
+    final bool isGateOpen = markerData['isGateOpen'] == true;
+    final bool hasHumidity = _asHumidityBool(markerData['humidity']);
+    final bool hasWater = _asWaterLevelBool(markerData['waterlevel']);
+    final double phValue = ((markerData['ph'] ?? 0.0) as num).toDouble();
+    final bool isCritical = !hasHumidity || !hasWater || phValue < 6.0 || phValue > 8.0;
+
+    final Color accent = isCritical ? Colors.red.shade700 : Colors.green.shade700;
+    final String gateLabel = isGateOpen ? 'Aberta' : 'Fechada';
+    final String humidityLabel = hasHumidity ? 'Úmido' : 'Seco';
+    final String waterLabel = hasWater ? 'Alto' : 'Baixo';
+
+    _customInfoWindowController.addInfoWindow?.call(
+      GestureDetector(
+        onTap: () {
+          _customInfoWindowController.hideInfoWindow?.call();
+          _showMarkerDetails(context, markerId);
+        },
+        child: Container(
+          width: 260,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: accent.withValues(alpha: 0.35), width: 1.2),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x33000000),
+                blurRadius: 16,
+                offset: Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    isCritical ? Icons.warning_amber_rounded : Icons.check_circle,
+                    color: accent,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Ponto $markerId • ${isCritical ? 'ALERTA' : 'ESTÁVEL'}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: accent,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Comporta: $gateLabel | Solo: $humidityLabel',
+                style: const TextStyle(fontSize: 12, color: Colors.black87),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Água: $waterLabel | pH: ${phValue.toStringAsFixed(1)}',
+                style: const TextStyle(fontSize: 12, color: Colors.black87),
+              ),
+              const SizedBox(height: 8),
+              const Align(
+                alignment: Alignment.center,
+                child: Text(
+                  'Toque para detalhes',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF4A4A4A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      position,
     );
   }
 
@@ -409,7 +511,7 @@ class _MyAppState extends State<MyApp> {
                       _removeMarker(markerId);
                     },
                     icon: const Icon(Icons.delete, color: Colors.white),
-                    label: const Text('Remover Marcador'),
+                    label: const Text('Remover ponto'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red,
                       minimumSize: const Size(double.infinity, 40),
@@ -587,6 +689,7 @@ class _MyAppState extends State<MyApp> {
 
   @override
   void dispose() {
+    _customInfoWindowController.dispose();
     _humiditySub?.cancel();
     _waterLevelSub?.cancel();
     _waterFlowSub?.cancel();
@@ -1041,8 +1144,16 @@ class _MyAppState extends State<MyApp> {
                     GoogleMap(
                       onMapCreated: (controller) {
                         mapController = controller;
+                        _customInfoWindowController.googleMapController =
+                            controller;
                         _isMapCreated = true;
                         _tryCenterMapOnFirstMarker();
+                      },
+                      onTap: (_) {
+                        _customInfoWindowController.hideInfoWindow?.call();
+                      },
+                      onCameraMove: (_) {
+                        _customInfoWindowController.onCameraMove?.call();
                       },
                       markers: markers
                           .map(
@@ -1060,6 +1171,12 @@ class _MyAppState extends State<MyApp> {
                       myLocationEnabled: false,
                       myLocationButtonEnabled: false,
                       mapType: _mapType,
+                    ),
+                    CustomInfoWindow(
+                      controller: _customInfoWindowController,
+                      height: 130,
+                      width: 260,
+                      offset: 40,
                     ),
                     SafeArea(
                       child: Align(

@@ -33,6 +33,7 @@ dependencies:
   firebase_core: ^2.32.0
   firebase_database: ^10.5.7
   google_maps_flutter: ^2.12.3
+  custom_info_window: ^1.0.1
   cupertino_icons: ^1.0.8
   fl_chart: ^1.1.1
   
