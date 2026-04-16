@@ -235,323 +235,180 @@ class _DashboardScreenState extends State<DashboardScreen> {
           final sortedEntries = _applySort(filteredEntries);
           final bool isDesktop = MediaQuery.of(context).size.width >= 1100;
 
+          final summaryCard = Padding(
+            padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
+            child: GlassCard(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Resumo operacional',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                      BadgeChip(
+                        icon: criticalCount > 0
+                            ? Icons.report_problem
+                            : Icons.verified,
+                        text: criticalCount > 0
+                            ? '$criticalCount em alerta'
+                            : 'Tudo estável',
+                        color: criticalCount > 0
+                            ? Colors.red.shade700
+                            : Colors.green.shade700,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      BadgeChip(
+                        icon: Icons.hub,
+                        text: '${markersState.length} pontos',
+                        color: Colors.teal.shade700,
+                      ),
+                      BadgeChip(
+                        icon: Icons.water_drop,
+                        text: '$availableWaterCount com água',
+                        color: Colors.blue.shade700,
+                      ),
+                      BadgeChip(
+                        icon: Icons.grass,
+                        text: '$humidCount úmidos / $dryCount secos',
+                        color: Colors.brown.shade700,
+                      ),
+                      BadgeChip(
+                        icon: Icons.lock,
+                        text: '$openGateCount comportas abertas',
+                        color: Colors.green.shade700,
+                      ),
+                      BadgeChip(
+                        icon: Icons.warning_amber,
+                        text: '$criticalCount alertas',
+                        color: criticalCount > 0
+                            ? Colors.red.shade700
+                            : Colors.green.shade700,
+                      ),
+                      BadgeChip(
+                        icon: Icons.science,
+                        text: 'pH médio ${avgPh.toStringAsFixed(1)}',
+                        color: Colors.indigo.shade700,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+
+          final filtersCard = Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+            child: GlassCard(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: _searchController,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      hintText: 'Buscar por ID do ponto',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _searchController.text.isEmpty
+                          ? null
+                          : IconButton(
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() {});
+                              },
+                              icon: const Icon(Icons.close),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _buildFilterChip('Todos', MarkerFilter.all),
+                        _buildFilterChip('Comporta aberta', MarkerFilter.gateOpen),
+                        _buildFilterChip('Solo úmido', MarkerFilter.humidSoil),
+                        _buildFilterChip('Solo seco', MarkerFilter.drySoil),
+                        _buildFilterChip('pH critico', MarkerFilter.criticalPh),
+                        _buildFilterChip('Sem agua', MarkerFilter.noWater),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Icon(Icons.sort, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButton<MarkerSort>(
+                          value: _activeSort,
+                          isExpanded: true,
+                          underline: const SizedBox.shrink(),
+                          items: MarkerSort.values
+                              .map(
+                                (sort) => DropdownMenuItem(
+                                  value: sort,
+                                  child: Text(_sortLabel(sort)),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setState(() => _activeSort = value);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${sortedEntries.length} pontos na visualização',
+                    style: const TextStyle(
+                      color: Colors.grey,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (sortedEntries.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text(
+                        'Nenhum ponto encontrado para os filtros selecionados.',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+
           final listView = ListView.builder(
             padding: const EdgeInsets.all(8.0),
             itemCount: sortedEntries.length + 2,
             itemBuilder: (context, index) {
               if (index == 0) {
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
-                  child: GlassCard(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Resumo operacional',
-                                style: Theme.of(context).textTheme.titleMedium
-                                    ?.copyWith(fontWeight: FontWeight.w800),
-                              ),
-                            ),
-                            BadgeChip(
-                              icon: criticalCount > 0
-                                  ? Icons.report_problem
-                                  : Icons.verified,
-                              text: criticalCount > 0
-                                  ? '$criticalCount em alerta'
-                                  : 'Tudo estável',
-                              color: criticalCount > 0
-                                  ? Colors.red.shade700
-                                  : Colors.green.shade700,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            BadgeChip(
-                              icon: Icons.hub,
-                              text: '${markersState.length} pontos',
-                              color: Colors.teal.shade700,
-                            ),
-                            BadgeChip(
-                              icon: Icons.water_drop,
-                              text: '$availableWaterCount com água',
-                              color: Colors.blue.shade700,
-                            ),
-                            BadgeChip(
-                              icon: Icons.grass,
-                              text: '$humidCount úmidos / $dryCount secos',
-                              color: Colors.brown.shade700,
-                            ),
-                            BadgeChip(
-                              icon: Icons.lock,
-                              text: '$openGateCount comportas abertas',
-                              color: Colors.green.shade700,
-                            ),
-                            BadgeChip(
-                              icon: Icons.warning_amber,
-                              text: '$criticalCount alertas',
-                              color: criticalCount > 0
-                                  ? Colors.red.shade700
-                                  : Colors.green.shade700,
-                            ),
-                            BadgeChip(
-                              icon: Icons.science,
-                              text: 'pH médio ${avgPh.toStringAsFixed(1)}',
-                              color: Colors.indigo.shade700,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                );
+                return summaryCard;
               }
 
               if (index == 1) {
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
-                  child: GlassCard(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      children: [
-                        TextField(
-                          controller: _searchController,
-                          onChanged: (_) => setState(() {}),
-                          decoration: InputDecoration(
-                            hintText: 'Buscar por ID do ponto',
-                            prefixIcon: const Icon(Icons.search),
-                            suffixIcon: _searchController.text.isEmpty
-                                ? null
-                                : IconButton(
-                                    onPressed: () {
-                                      _searchController.clear();
-                                      setState(() {});
-                                    },
-                                    icon: const Icon(Icons.close),
-                                  ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: [
-                              _buildFilterChip('Todos', MarkerFilter.all),
-                              _buildFilterChip(
-                                'Comporta aberta',
-                                MarkerFilter.gateOpen,
-                              ),
-                              _buildFilterChip(
-                                'Solo úmido',
-                                MarkerFilter.humidSoil,
-                              ),
-                              _buildFilterChip(
-                                'Solo seco',
-                                MarkerFilter.drySoil,
-                              ),
-                              _buildFilterChip(
-                                'pH critico',
-                                MarkerFilter.criticalPh,
-                              ),
-                              _buildFilterChip(
-                                'Sem agua',
-                                MarkerFilter.noWater,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            const Icon(Icons.sort, size: 18),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: DropdownButton<MarkerSort>(
-                                value: _activeSort,
-                                isExpanded: true,
-                                underline: const SizedBox.shrink(),
-                                items: MarkerSort.values
-                                    .map(
-                                      (sort) => DropdownMenuItem(
-                                        value: sort,
-                                        child: Text(_sortLabel(sort)),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: (value) {
-                                  if (value == null) return;
-                                  setState(() => _activeSort = value);
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (sortedEntries.isEmpty)
-                          const Padding(
-                            padding: EdgeInsets.only(top: 8),
-                            child: Text(
-                              'Nenhum ponto encontrado para os filtros selecionados.',
-                              style: TextStyle(color: Colors.grey),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                );
+                return filtersCard;
               }
 
               final markerId = sortedEntries[index - 2].key;
               final markerData = sortedEntries[index - 2].value;
-              final bool isGateOpen = markerData['isGateOpen'] == true;
-              final bool critical = _isCritical(markerData);
-
-              return Card(
-                margin: const EdgeInsets.symmetric(
-                  vertical: 8.0,
-                  horizontal: 4,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Ponto: $markerId',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          BadgeChip(
-                            icon: isGateOpen ? Icons.lock_open : Icons.lock,
-                            text: isGateOpen
-                                ? 'Comporta aberta'
-                                : 'Comporta fechada',
-                            color: isGateOpen ? Colors.green : Colors.red,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          BadgeChip(
-                            icon: critical ? Icons.error_outline : Icons.check,
-                            text: critical
-                                ? 'Status: Critico'
-                                : 'Status: Estavel',
-                            color: critical ? Colors.red : Colors.green,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      BadgeChip(
-                        icon: _asWaterLevelBool(markerData['waterlevel'])
-                            ? Icons.water_drop
-                            : Icons.warning_amber,
-                        text: _asWaterLevelBool(markerData['waterlevel'])
-                            ? 'Nivel de agua: alto'
-                            : 'Nivel de agua: baixo',
-                        color: _asWaterLevelBool(markerData['waterlevel'])
-                            ? Colors.blue.shade700
-                            : Colors.red.shade700,
-                      ),
-                      const SizedBox(height: 12),
-                      BadgeChip(
-                        icon: _asHumidityBool(markerData['humidity'])
-                            ? Icons.water_drop
-                            : Icons.grass,
-                        text: _asHumidityBool(markerData['humidity'])
-                            ? 'Umidade do solo: úmido'
-                            : 'Umidade do solo: seco',
-                        color: _asHumidityBool(markerData['humidity'])
-                            ? Colors.green.shade700
-                            : Colors.brown.shade700,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildIndicator(
-                        label: 'Fluxo de água',
-                        value: (markerData['waterFlow'] ?? 0).toDouble(),
-                        unit: 'L/min',
-                        color: Colors.lightBlueAccent,
-                        maxValue: 30,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildIndicator(
-                        label: 'pH da água',
-                        value: (markerData['ph'] ?? 0.0).toDouble(),
-                        unit: '',
-                        color: Colors.green,
-                        maxValue: 14,
-                      ),
-                      const SizedBox(height: 16),
-
-                      const SizedBox(height: 10),
-                      StreamBuilder<DatabaseEvent>(
-                        stream: widget.markersRef
-                            .child(markerId)
-                            .child('history')
-                            .orderByChild('timestamp')
-                            .limitToLast(5)
-                            .onValue,
-                        builder: (context, historySnapshot) {
-                          if (!historySnapshot.hasData ||
-                              historySnapshot.data?.snapshot.value == null) {
-                            return const Text(
-                              'Sem historico disponivel.',
-                              style: TextStyle(color: Colors.grey),
-                            );
-                          }
-
-                          final historyData =
-                              historySnapshot.data!.snapshot.value
-                                  as Map<dynamic, dynamic>;
-                          final entries = historyData.entries.toList()
-                            ..sort((a, b) {
-                              final bt = b.value['timestamp'] ?? 0;
-                              final at = a.value['timestamp'] ?? 0;
-                              return bt.compareTo(at);
-                            });
-
-                          return ExpansionTile(
-                            title: const Text('Historico recente'),
-                            children: entries.map((entry) {
-                              final e = entry.value as Map<dynamic, dynamic>;
-                              final date = DateTime.fromMillisecondsSinceEpoch(
-                                e['timestamp'] ?? 0,
-                              );
-                              return ListTile(
-                                title: Text(
-                                  'Agua: ${_asWaterLevelBool(e['waterlevel']) ? 'alto' : 'baixo'} | Umidade: ${_asHumidityBool(e['humidity']) ? 'Úmido' : 'Seco'} | Fluxo: ${e['waterFlow']} | pH: ${e['ph']}',
-                                ),
-                                subtitle: Text(
-                                  'Comporta: ${e['isGateOpen'] == true ? 'Aberta' : 'Fechada'} - ${date.toLocal()}',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              );
+              return _buildMarkerCard(markerId, markerData);
             },
           );
 
@@ -561,12 +418,220 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           return Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1180),
-              child: listView,
+              constraints: const BoxConstraints(maxWidth: 1440),
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 370,
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [summaryCard, filtersCard],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: sortedEntries.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'Nenhum ponto encontrado para os filtros selecionados.',
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                            )
+                          : GridView.builder(
+                              padding: const EdgeInsets.fromLTRB(4, 4, 4, 10),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 2,
+                                    mainAxisSpacing: 12,
+                                    crossAxisSpacing: 12,
+                                    childAspectRatio: 0.82,
+                                  ),
+                              itemCount: sortedEntries.length,
+                              itemBuilder: (context, index) {
+                                final markerId = sortedEntries[index].key;
+                                final markerData = sortedEntries[index].value;
+                                return _buildMarkerCard(markerId, markerData);
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           );
         },
       ),
+    );
+  }
+
+  Widget _buildMarkerCard(String markerId, Map<String, dynamic> markerData) {
+    final bool isGateOpen = markerData['isGateOpen'] == true;
+    final bool critical = _isCritical(markerData);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Ponto: $markerId',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                BadgeChip(
+                  icon: isGateOpen ? Icons.lock_open : Icons.lock,
+                  text: isGateOpen ? 'Comporta aberta' : 'Comporta fechada',
+                  color: isGateOpen ? Colors.green : Colors.red,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                BadgeChip(
+                  icon: critical ? Icons.error_outline : Icons.check,
+                  text: critical ? 'Status: Critico' : 'Status: Estavel',
+                  color: critical ? Colors.red : Colors.green,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            BadgeChip(
+              icon: _asWaterLevelBool(markerData['waterlevel'])
+                  ? Icons.water_drop
+                  : Icons.warning_amber,
+              text: _asWaterLevelBool(markerData['waterlevel'])
+                  ? 'Nivel de agua: alto'
+                  : 'Nivel de agua: baixo',
+              color: _asWaterLevelBool(markerData['waterlevel'])
+                  ? Colors.blue.shade700
+                  : Colors.red.shade700,
+            ),
+            const SizedBox(height: 12),
+            BadgeChip(
+              icon: _asHumidityBool(markerData['humidity'])
+                  ? Icons.water_drop
+                  : Icons.grass,
+              text: _asHumidityBool(markerData['humidity'])
+                  ? 'Umidade do solo: úmido'
+                  : 'Umidade do solo: seco',
+              color: _asHumidityBool(markerData['humidity'])
+                  ? Colors.green.shade700
+                  : Colors.brown.shade700,
+            ),
+            const SizedBox(height: 12),
+            _buildIndicator(
+              label: 'Fluxo de água',
+              value: (markerData['waterFlow'] ?? 0).toDouble(),
+              unit: 'L/min',
+              color: Colors.lightBlueAccent,
+              maxValue: 30,
+            ),
+            const SizedBox(height: 12),
+            _buildIndicator(
+              label: 'pH da água',
+              value: (markerData['ph'] ?? 0.0).toDouble(),
+              unit: '',
+              color: Colors.green,
+              maxValue: 14,
+            ),
+            const SizedBox(height: 10),
+            _buildMarkerHistory(markerId),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMarkerHistory(String markerId) {
+    return StreamBuilder<DatabaseEvent>(
+      stream: widget.markersRef
+          .child(markerId)
+          .child('history')
+          .orderByChild('timestamp')
+          .limitToLast(5)
+          .onValue,
+      builder: (context, historySnapshot) {
+        if (!historySnapshot.hasData ||
+            historySnapshot.data?.snapshot.value == null) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: const Text(
+              'Sem historico disponivel.',
+              style: TextStyle(color: Colors.grey),
+            ),
+          );
+        }
+
+        final historyData =
+            historySnapshot.data!.snapshot.value as Map<dynamic, dynamic>;
+        final entries = historyData.entries.toList()
+          ..sort((a, b) {
+            final bt = b.value['timestamp'] ?? 0;
+            final at = a.value['timestamp'] ?? 0;
+            return bt.compareTo(at);
+          });
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Historico recente',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 155),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: entries.length,
+                separatorBuilder: (_, __) => const Divider(height: 8),
+                itemBuilder: (context, index) {
+                  final e = entries[index].value as Map<dynamic, dynamic>;
+                  final date = DateTime.fromMillisecondsSinceEpoch(
+                    e['timestamp'] ?? 0,
+                  );
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Agua: ${_asWaterLevelBool(e['waterlevel']) ? 'alto' : 'baixo'} | Umidade: ${_asHumidityBool(e['humidity']) ? 'Úmido' : 'Seco'} | Fluxo: ${e['waterFlow']} | pH: ${e['ph']}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Comporta: ${e['isGateOpen'] == true ? 'Aberta' : 'Fechada'} - ${date.toLocal()}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 

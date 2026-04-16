@@ -1005,6 +1005,237 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
+  bool _isMarkerCritical(Map<String, dynamic> markerData) {
+    final bool hasHumidity = _asHumidityBool(markerData['humidity']);
+    final bool hasWater = _asWaterLevelBool(markerData['waterlevel']);
+    final double phValue = ((markerData['ph'] ?? 0.0) as num).toDouble();
+    return !hasHumidity || !hasWater || phValue < 6.0 || phValue > 8.0;
+  }
+
+  List<MapEntry<String, Map<String, dynamic>>> _sortedMarkerEntries() {
+    final entries = markersState.entries.toList();
+    entries.sort((a, b) => a.key.compareTo(b.key));
+    return entries;
+  }
+
+  Widget _buildDesktopSidebar(BuildContext scaffoldContext) {
+    final markerEntries = _sortedMarkerEntries();
+    final int openGates = markerEntries
+        .where((entry) => entry.value['isGateOpen'] == true)
+        .length;
+    final int criticalCount = markerEntries
+        .where((entry) => _isMarkerCritical(entry.value))
+        .length;
+
+    return GlassCard(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.tune, color: AppTheme.primary),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Painel Desktop',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              BadgeChip(
+                icon: Icons.location_on,
+                text: '${markerEntries.length} pontos',
+                color: Colors.teal.shade700,
+              ),
+              BadgeChip(
+                icon: Icons.door_front_door,
+                text: '$openGates abertas',
+                color: Colors.blue.shade700,
+              ),
+              BadgeChip(
+                icon: Icons.warning_amber,
+                text: '$criticalCount alertas',
+                color: criticalCount > 0
+                    ? Colors.red.shade700
+                    : Colors.green.shade700,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Visual do mapa',
+            style: TextStyle(
+              color: Colors.grey.shade700,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ChoiceChip(
+                selected: _mapType == MapType.normal,
+                label: const Text('Normal'),
+                onSelected: (_) {
+                  setState(() {
+                    _mapType = MapType.normal;
+                  });
+                },
+              ),
+              ChoiceChip(
+                selected: _mapType == MapType.satellite,
+                label: const Text('Satelite'),
+                onSelected: (_) {
+                  setState(() {
+                    _mapType = MapType.satellite;
+                  });
+                },
+              ),
+              ChoiceChip(
+                selected: _mapType == MapType.hybrid,
+                label: const Text('Hibrido'),
+                onSelected: (_) {
+                  setState(() {
+                    _mapType = MapType.hybrid;
+                  });
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () => _addNewMarker(scaffoldContext),
+                icon: const Icon(Icons.add_location_alt),
+                label: const Text('Novo ponto'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _showLegendSheet,
+                icon: const Icon(Icons.info_outline),
+                label: const Text('Legenda'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _showRecentAlertsSheet,
+                icon: const Icon(Icons.notifications_outlined),
+                label: const Text('Alertas'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Pontos monitorados',
+            style: TextStyle(
+              color: Colors.grey.shade700,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: markerEntries.isEmpty
+                ? const Center(
+                    child: Text(
+                      'Nenhum ponto encontrado.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  )
+                : ListView.separated(
+                    itemCount: markerEntries.length,
+                    separatorBuilder: (_, __) => const Divider(height: 12),
+                    itemBuilder: (context, index) {
+                      final markerId = markerEntries[index].key;
+                      final markerData = markerEntries[index].value;
+                      final latitude =
+                          (markerData['latitude'] as num?)?.toDouble() ??
+                          _center.latitude;
+                      final longitude =
+                          (markerData['longitude'] as num?)?.toDouble() ??
+                          _center.longitude;
+                      final bool isGateOpen = markerData['isGateOpen'] == true;
+                      final bool isCritical = _isMarkerCritical(markerData);
+                      final position = ll.LatLng(latitude, longitude);
+
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () {
+                          _webMapController.move(position, 17);
+                          _showWebMarkerDetails(markerId, position);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 6,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.place,
+                                color: isGateOpen
+                                    ? Colors.blue.shade700
+                                    : Colors.red.shade700,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      markerId,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(
+                                isCritical
+                                    ? Icons.warning_amber_rounded
+                                    : Icons.check_circle,
+                                color: isCritical
+                                    ? Colors.orange.shade700
+                                    : Colors.green.shade700,
+                                size: 20,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMapQuickActions(BuildContext scaffoldContext) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1336,6 +1567,33 @@ class _MyAppState extends State<MyApp> {
                           mapType: _mapType,
                         );
 
+                  final mapStack = Stack(
+                    children: [
+                      Positioned.fill(child: mapWidget),
+                      if (!kIsWeb)
+                        CustomInfoWindow(
+                          controller: _customInfoWindowController,
+                          height: 130,
+                          width: 260,
+                          offset: 40,
+                        ),
+                      SafeArea(
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          child: _buildTopStatusPanel(
+                            maxWidth: isDesktopWeb ? 920 : null,
+                          ),
+                        ),
+                      ),
+                      if (!isDesktopWeb)
+                        Positioned(
+                          right: 16,
+                          bottom: 20,
+                          child: _buildMapQuickActions(scaffoldContext),
+                        ),
+                    ],
+                  );
+
                   return Padding(
                     padding: EdgeInsets.all(isDesktopWeb ? 16 : 0),
                     child: Center(
@@ -1343,36 +1601,26 @@ class _MyAppState extends State<MyApp> {
                         constraints: BoxConstraints(
                           maxWidth: isDesktopWeb ? 1500 : double.infinity,
                         ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(
-                            isDesktopWeb ? 20 : 0,
-                          ),
-                          child: Stack(
-                            children: [
-                              Positioned.fill(child: mapWidget),
-                              if (!kIsWeb)
-                                CustomInfoWindow(
-                                  controller: _customInfoWindowController,
-                                  height: 130,
-                                  width: 260,
-                                  offset: 40,
-                                ),
-                              SafeArea(
-                                child: Align(
-                                  alignment: Alignment.topCenter,
-                                  child: _buildTopStatusPanel(
-                                    maxWidth: isDesktopWeb ? 920 : null,
+                        child: isDesktopWeb
+                            ? Row(
+                                children: [
+                                  Expanded(
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: mapStack,
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(width: 14),
+                                  SizedBox(
+                                    width: 360,
+                                    child: _buildDesktopSidebar(scaffoldContext),
+                                  ),
+                                ],
+                              )
+                            : ClipRRect(
+                                borderRadius: BorderRadius.circular(0),
+                                child: mapStack,
                               ),
-                              Positioned(
-                                right: isDesktopWeb ? 22 : 16,
-                                bottom: isDesktopWeb ? 26 : 20,
-                                child: _buildMapQuickActions(scaffoldContext),
-                              ),
-                            ],
-                          ),
-                        ),
                       ),
                     ),
                   );
