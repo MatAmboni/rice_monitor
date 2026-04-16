@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/firebase_options.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
+import 'package:flutter_map/flutter_map.dart' as fm;
+import 'package:latlong2/latlong.dart' as ll;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'screens/dashboard_screen.dart';
@@ -85,6 +87,7 @@ bool _asWaterLevelBool(dynamic value) {
 
 class _MyAppState extends State<MyApp> {
   late GoogleMapController mapController;
+  final fm.MapController _webMapController = fm.MapController();
   final CustomInfoWindowController _customInfoWindowController =
       CustomInfoWindowController();
   Map<String, Map<String, dynamic>> markersState = {};
@@ -107,6 +110,8 @@ class _MyAppState extends State<MyApp> {
 
   // Lista de markers
   Set<Marker> markers = {};
+
+  ll.LatLng get _webCenter => ll.LatLng(_center.latitude, _center.longitude);
 
   // Referências ao Firebase
   final DatabaseReference humidityRef = database.ref('humidity');
@@ -230,7 +235,82 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
+  fm.Marker _buildWebMarker(String id, ll.LatLng position) {
+    final markerData = markersState[id] ?? const <String, dynamic>{};
+    final bool isGateOpen = markerData['isGateOpen'] == true;
+
+    return fm.Marker(
+      point: position,
+      width: 48,
+      height: 48,
+      child: GestureDetector(
+        onTap: () => _showWebMarkerDetails(id, position),
+        child: Container(
+          decoration: BoxDecoration(
+            color: isGateOpen ? Colors.blue : Colors.red,
+            shape: BoxShape.circle,
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 8,
+                offset: Offset(0, 3),
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.location_on,
+            color: Colors.white,
+            size: 28,
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<fm.Marker> _buildWebMarkers() {
+    return markersState.entries.map((entry) {
+      final markerData = entry.value;
+      final latitude = markerData['latitude'] as double? ?? _center.latitude;
+      final longitude = markerData['longitude'] as double? ?? _center.longitude;
+      return _buildWebMarker(entry.key, ll.LatLng(latitude, longitude));
+    }).toList();
+  }
+
+  void _showWebMarkerDetails(String markerId, ll.LatLng position) {
+    final markerData = markersState[markerId] ?? const <String, dynamic>{};
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text('Marcador $markerId'),
+          content: Text(
+            'Latitude: ${position.latitude.toStringAsFixed(5)}\n'
+            'Longitude: ${position.longitude.toStringAsFixed(5)}\n'
+            'Comporta: ${markerData['isGateOpen'] == true ? 'aberta' : 'fechada'}\n'
+            'Umidade: ${_asHumidityBool(markerData['humidity']) ? 'sim' : 'nao'}\n'
+            'Nivel da agua: ${_asWaterLevelBool(markerData['waterlevel']) ? 'alto' : 'baixo'}',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Fechar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _centerMapOnMarker(LatLng position) {
+    if (kIsWeb) {
+      _webMapController.move(
+        ll.LatLng(position.latitude, position.longitude),
+        16.5,
+      );
+      return;
+    }
+
     if (!_isMapCreated) {
       return;
     }
@@ -617,6 +697,16 @@ class _MyAppState extends State<MyApp> {
 
   void _tryCenterMapOnFirstMarker() {
     if (_hasCenteredOnFirstMarker || !_isMapCreated || markers.isEmpty) {
+      if (kIsWeb && markers.isNotEmpty) {
+        _webMapController.move(
+          ll.LatLng(
+            markers.first.position.latitude,
+            markers.first.position.longitude,
+          ),
+          16.0,
+        );
+        _hasCenteredOnFirstMarker = true;
+      }
       return;
     }
 
@@ -913,7 +1003,9 @@ class _MyAppState extends State<MyApp> {
         FloatingActionButton.small(
           heroTag: 'centerMap',
           onPressed: kIsWeb
-              ? null
+              ? () {
+                  _webMapController.move(_webCenter, 15);
+                }
               : () {
                   mapController.animateCamera(
                     CameraUpdate.newCameraPosition(
@@ -1152,7 +1244,28 @@ class _MyAppState extends State<MyApp> {
                 return Stack(
                   children: [
                     if (kIsWeb)
-                      _buildWebMapFallback(scaffoldContext)
+                      Positioned.fill(
+                        child: fm.FlutterMap(
+                          mapController: _webMapController,
+                          options: fm.MapOptions(
+                            initialCenter: _webCenter,
+                            initialZoom: 15,
+                            onTap: (_, __) {
+                              _customInfoWindowController.hideInfoWindow
+                                  ?.call();
+                            },
+                          ),
+                          children: [
+                            fm.TileLayer(
+                              urlTemplate:
+                                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                              userAgentPackageName:
+                                  'com.amboni.flutterApplication1',
+                            ),
+                            fm.MarkerLayer(markers: _buildWebMarkers()),
+                          ],
+                        ),
+                      )
                     else
                       GoogleMap(
                         onMapCreated: (controller) {
@@ -1209,78 +1322,6 @@ class _MyAppState extends State<MyApp> {
             ),
           );
         },
-      ),
-    );
-  }
-
-  Widget _buildWebMapFallback(BuildContext scaffoldContext) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.blueGrey.shade50, Colors.teal.shade50],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: Card(
-            elevation: 8,
-            margin: const EdgeInsets.all(24),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.map_outlined,
-                    size: 56,
-                    color: Colors.teal.shade700,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Mapa indisponivel no Chrome',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'A camada do Google Maps no web esta falhando neste ambiente. '
-                    'O painel, alertas e Firebase continuam funcionando.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: Colors.grey.shade700,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    alignment: WrapAlignment.center,
-                    children: [
-                      FilledButton.icon(
-                        onPressed: () => _addNewMarker(scaffoldContext),
-                        icon: const Icon(Icons.add_location_alt),
-                        label: const Text('Adicionar marcador'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: _showLegendSheet,
-                        icon: const Icon(Icons.info_outline),
-                        label: const Text('Ver legenda'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
