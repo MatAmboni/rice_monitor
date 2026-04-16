@@ -38,6 +38,48 @@ class MyApp extends StatefulWidget {
 
 FirebaseDatabase database = FirebaseDatabase.instance;
 
+bool _asHumidityBool(dynamic value) {
+  if (value is bool) {
+    return value;
+  }
+  if (value is num) {
+    return value != 0;
+  }
+  if (value is String) {
+    final normalized = value.trim().toLowerCase();
+    return normalized == 'true' || normalized == '1' || normalized == 'humido';
+  }
+  return false;
+}
+
+bool _asWaterLevelBool(dynamic value) {
+  if (value is bool) {
+    return value;
+  }
+  if (value is num) {
+    return value != 0;
+  }
+  if (value is String) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized == 'true' ||
+        normalized == '1' ||
+        normalized == 'alto' ||
+        normalized == 'high' ||
+        normalized == 'sim') {
+      return true;
+    }
+    if (normalized == 'false' ||
+        normalized == '0' ||
+        normalized == 'baixo' ||
+        normalized == 'low' ||
+        normalized == 'nao' ||
+        normalized == 'não') {
+      return false;
+    }
+  }
+  return false;
+}
+
 class _MyAppState extends State<MyApp> {
   late GoogleMapController mapController;
   Map<String, Map<String, dynamic>> markersState = {};
@@ -50,8 +92,8 @@ class _MyAppState extends State<MyApp> {
   MapType _mapType = MapType.satellite;
   bool _isMapCreated = false;
   bool _hasCenteredOnFirstMarker = false;
-  int humidity = 0;
-  int waterlevel = 0;
+  bool humidity = false;
+  bool waterlevel = false;
   int waterflow = 0;
   int ph = 0;
   bool isGateOpen = false;
@@ -98,8 +140,8 @@ class _MyAppState extends State<MyApp> {
                     markerData['longitude'] as double,
                   );
                   markersState[key] = {
-                    'humidity': markerData['humidity'] ?? 0,
-                    'waterlevel': markerData['waterlevel'] ?? 0,
+                    'humidity': _asHumidityBool(markerData['humidity']),
+                    'waterlevel': _asWaterLevelBool(markerData['waterlevel']),
                     'waterFlow':
                         markerData['waterFlow'] ?? 0, // Include waterFlow
                     'ph': markerData['ph'] ?? 0, // Include ph
@@ -120,8 +162,8 @@ class _MyAppState extends State<MyApp> {
                     .set({
                       'latitude': _center.latitude,
                       'longitude': _center.longitude,
-                      'humidity': 0,
-                      'waterlevel': 0,
+                      'humidity': false,
+                      'waterlevel': false,
                       'waterFlow': 0, // Initialize waterFlow
                       'ph': 0, // Initialize ph
                       'isGateOpen': false,
@@ -204,16 +246,16 @@ class _MyAppState extends State<MyApp> {
                 : Colors.grey;
 
             // 2. Lógica da Água Disponível (Sim/Não)
-            final waterLevelValue =
-                (currentMarkerData['waterlevel'] ?? 0) as num;
-            final availableWaterText = waterLevelValue == 1 ? 'Sim' : 'Não';
-            final availableWaterColor = waterLevelValue == 1
+            final waterLevelHigh = _asWaterLevelBool(
+              currentMarkerData['waterlevel'],
+            );
+            final availableWaterText = waterLevelHigh ? 'Alto' : 'Baixo';
+            final availableWaterColor = waterLevelHigh
                 ? Colors.green
                 : Colors.red;
 
             // 3. Lógica da Umidade (Seca/Úmida)
-            final humidityValue = (currentMarkerData['humidity'] ?? 0) as num;
-            final bool isHumid = humidityValue > 50;
+            final bool isHumid = _asHumidityBool(currentMarkerData['humidity']);
             final String humidityText = isHumid ? 'Terra Úmida' : 'Terra Seca';
             final Color humidityColor = isHumid
                 ? Colors.brown.shade700
@@ -416,28 +458,26 @@ class _MyAppState extends State<MyApp> {
     _writeMarkerData(
       markerId,
       status,
-      markerState['humidity'] ?? 0,
-      markerState['waterlevel'] ?? 0,
+      _asHumidityBool(markerState['humidity']),
+      _asWaterLevelBool(markerState['waterlevel']),
     );
   }
 
   void _readHumidity() {
     _humiditySub = humidityRef.onValue.listen((event) {
-      final data = event.snapshot.value as int?;
-      if (data != null) {
-        setState(() {
-          humidity = data;
-        });
-      }
+      final data = _asHumidityBool(event.snapshot.value);
+      setState(() {
+        humidity = data;
+      });
     });
   }
 
   void _readWaterLevel() {
     _waterLevelSub = waterLevelRef.onValue.listen((event) {
-      final data = event.snapshot.value as int?;
+      final data = event.snapshot.value;
       if (data != null) {
         setState(() {
-          waterlevel = data;
+          waterlevel = _asWaterLevelBool(data);
         });
       }
     });
@@ -499,8 +539,8 @@ class _MyAppState extends State<MyApp> {
           .set({
             'latitude': newPosition.latitude,
             'longitude': newPosition.longitude,
-            'humidity': 0,
-            'waterlevel': 0,
+            'humidity': false,
+            'waterlevel': false,
             'waterFlow': 0,
             'ph': 0,
             'isGateOpen': false,
@@ -522,8 +562,8 @@ class _MyAppState extends State<MyApp> {
           final data = event.snapshot.value as Map<dynamic, dynamic>?;
           if (data != null) {
             final newMarkerData = {
-              'humidity': data['humidity'] ?? 0,
-              'waterlevel': data['waterlevel'] ?? 0,
+              'humidity': _asHumidityBool(data['humidity']),
+              'waterlevel': _asWaterLevelBool(data['waterlevel']),
               'isGateOpen': data['isGateOpen'] ?? false,
               'waterFlow': data['waterFlow'] ?? 0,
               'ph': (data['ph'] ?? 0).toDouble(),
@@ -585,15 +625,15 @@ class _MyAppState extends State<MyApp> {
     }
 
     // === Comparar nível da água ===
-    final oldWaterLevel = (oldData['waterlevel'] ?? -1) as num;
-    final newWaterLevel = (newData['waterlevel'] ?? -1) as num;
+    final oldWaterLevel = _asWaterLevelBool(oldData['waterlevel']);
+    final newWaterLevel = _asWaterLevelBool(newData['waterlevel']);
     if (oldWaterLevel != newWaterLevel) {
-      if (newWaterLevel == 0) {
+      if (!newWaterLevel) {
         _sendLocalNotification(
           'Alerta de Nível da Água',
           'Nível de água baixo (indisponível) no $markerId!',
         );
-      } else if (newWaterLevel == 1) {
+      } else {
         _sendLocalNotification(
           'Nível de Água Restaurado',
           'Nível de água normalizado no $markerId.',
@@ -619,23 +659,18 @@ class _MyAppState extends State<MyApp> {
     }
 
     // === Comparar umidade ===
-    final oldHumidity = (oldData['humidity'] ?? -1) as num;
-    final newHumidity = (newData['humidity'] ?? -1) as num;
+    final oldHumidity = _asHumidityBool(oldData['humidity']);
+    final newHumidity = _asHumidityBool(newData['humidity']);
     if (oldHumidity != newHumidity) {
-      if (newHumidity < 40) {
+      if (!newHumidity) {
         _sendLocalNotification(
           'Solo Seco',
-          'A umidade do solo está baixa em $markerId ($newHumidity%).',
+          'A umidade do solo está baixa em $markerId.',
         );
-      } else if (newHumidity >= 40 && newHumidity <= 70) {
+      } else {
         _sendLocalNotification(
           'Solo Úmido',
-          'A umidade do solo está adequada em $markerId ($newHumidity%).',
-        );
-      } else if (newHumidity > 70) {
-        _sendLocalNotification(
-          'Solo Encharcado',
-          'A umidade do solo está muito alta em $markerId ($newHumidity%).',
+          'A umidade do solo foi restabelecida em $markerId.',
         );
       }
     }
@@ -662,8 +697,8 @@ class _MyAppState extends State<MyApp> {
   void _writeMarkerData(
     String markerId,
     bool gateStatus,
-    int humidityValue,
-    int waterLevelValue,
+    bool humidityValue,
+    bool waterLevelValue,
   ) {
     database
         .ref('markers/$markerId')
@@ -729,7 +764,6 @@ class _MyAppState extends State<MyApp> {
     final int openGates = markersState.values
         .where((marker) => marker['isGateOpen'] == true)
         .length;
-    final bool waterAvailable = waterlevel == 1;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),

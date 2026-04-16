@@ -3,9 +3,51 @@ import 'package:flutter/material.dart';
 
 import '../utils/ui_components.dart';
 
-enum MarkerFilter { all, gateOpen, lowHumidity, criticalPh, noWater }
+bool _asHumidityBool(dynamic value) {
+  if (value is bool) {
+    return value;
+  }
+  if (value is num) {
+    return value != 0;
+  }
+  if (value is String) {
+    final normalized = value.trim().toLowerCase();
+    return normalized == 'true' || normalized == '1' || normalized == 'humido';
+  }
+  return false;
+}
 
-enum MarkerSort { idAsc, idDesc, humidityAsc, humidityDesc, phAsc, phDesc }
+bool _asWaterLevelBool(dynamic value) {
+  if (value is bool) {
+    return value;
+  }
+  if (value is num) {
+    return value != 0;
+  }
+  if (value is String) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized == 'true' ||
+        normalized == '1' ||
+        normalized == 'alto' ||
+        normalized == 'high' ||
+        normalized == 'sim') {
+      return true;
+    }
+    if (normalized == 'false' ||
+        normalized == '0' ||
+        normalized == 'baixo' ||
+        normalized == 'low' ||
+        normalized == 'nao' ||
+        normalized == 'não') {
+      return false;
+    }
+  }
+  return false;
+}
+
+enum MarkerFilter { all, gateOpen, humidSoil, drySoil, criticalPh, noWater }
+
+enum MarkerSort { idAsc, idDesc, dryFirst, humidFirst, phAsc, phDesc }
 
 class DashboardScreen extends StatefulWidget {
   final DatabaseReference markersRef;
@@ -28,10 +70,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   bool _isCritical(Map<String, dynamic> markerData) {
-    final humidity = (markerData['humidity'] ?? 0) as num;
-    final waterLevel = (markerData['waterlevel'] ?? 0) as num;
+    final humidity = _asHumidityBool(markerData['humidity']);
+    final waterLevel = _asWaterLevelBool(markerData['waterlevel']);
     final ph = (markerData['ph'] ?? 0.0) as num;
-    return humidity < 40 || waterLevel == 0 || ph < 6.0 || ph > 8.0;
+    return !humidity || !waterLevel || ph < 6.0 || ph > 8.0;
   }
 
   bool _matchesFilter(
@@ -44,13 +86,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return true;
       case MarkerFilter.gateOpen:
         return markerData['isGateOpen'] == true;
-      case MarkerFilter.lowHumidity:
-        return ((markerData['humidity'] ?? 0) as num) < 40;
+      case MarkerFilter.humidSoil:
+        return _asHumidityBool(markerData['humidity']);
+      case MarkerFilter.drySoil:
+        return !_asHumidityBool(markerData['humidity']);
       case MarkerFilter.criticalPh:
         final ph = (markerData['ph'] ?? 0.0) as num;
         return ph < 6.0 || ph > 8.0;
       case MarkerFilter.noWater:
-        return (markerData['waterlevel'] ?? 0) == 0;
+        return !_asWaterLevelBool(markerData['waterlevel']);
     }
   }
 
@@ -63,13 +107,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           return a.key.compareTo(b.key);
         case MarkerSort.idDesc:
           return b.key.compareTo(a.key);
-        case MarkerSort.humidityAsc:
-          final ah = (a.value['humidity'] ?? 0) as num;
-          final bh = (b.value['humidity'] ?? 0) as num;
+        case MarkerSort.dryFirst:
+          final ah = _asHumidityBool(a.value['humidity']) ? 1 : 0;
+          final bh = _asHumidityBool(b.value['humidity']) ? 1 : 0;
           return ah.compareTo(bh);
-        case MarkerSort.humidityDesc:
-          final ah = (a.value['humidity'] ?? 0) as num;
-          final bh = (b.value['humidity'] ?? 0) as num;
+        case MarkerSort.humidFirst:
+          final ah = _asHumidityBool(a.value['humidity']) ? 1 : 0;
+          final bh = _asHumidityBool(b.value['humidity']) ? 1 : 0;
           return bh.compareTo(ah);
         case MarkerSort.phAsc:
           final aph = (a.value['ph'] ?? 0.0) as num;
@@ -90,10 +134,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return 'ID (A-Z)';
       case MarkerSort.idDesc:
         return 'ID (Z-A)';
-      case MarkerSort.humidityAsc:
-        return 'Umidade crescente';
-      case MarkerSort.humidityDesc:
-        return 'Umidade decrescente';
+      case MarkerSort.dryFirst:
+        return 'Solo seco primeiro';
+      case MarkerSort.humidFirst:
+        return 'Solo úmido primeiro';
       case MarkerSort.phAsc:
         return 'pH crescente';
       case MarkerSort.phDesc:
@@ -104,7 +148,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Dashboard de Irrigacao')),
+      appBar: AppBar(title: const Text('Resumo operacional')),
       body: StreamBuilder<DatabaseEvent>(
         stream: widget.markersRef.onValue,
         builder: (context, snapshot) {
@@ -134,8 +178,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             if (value is Map<dynamic, dynamic>) {
               final markerId = key.toString();
               markersState[markerId] = {
-                'humidity': value['humidity'] ?? 0,
-                'waterlevel': value['waterlevel'] ?? 0,
+                'humidity': _asHumidityBool(value['humidity']),
+                'waterlevel': _asWaterLevelBool(value['waterlevel']),
                 'waterFlow': value['waterFlow'] ?? 0,
                 'ph': value['ph'] ?? 0.0,
                 'isGateOpen': value['isGateOpen'] ?? false,
@@ -159,14 +203,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           }
 
           final markerValues = markersState.values.toList();
-          final double avgHumidity =
-              markerValues
-                  .map((e) => (e['humidity'] ?? 0) as num)
-                  .fold<num>(0, (sum, value) => sum + value)
-                  .toDouble() /
-              markerValues.length;
+          final int humidCount = markerValues
+              .where((e) => _asHumidityBool(e['humidity']))
+              .length;
+          final int dryCount = markerValues.length - humidCount;
           final int availableWaterCount = markerValues
-              .where((e) => (e['waterlevel'] ?? 0) == 1)
+              .where((e) => _asWaterLevelBool(e['waterlevel']))
               .length;
           final int openGateCount = markerValues
               .where((e) => (e['isGateOpen'] ?? false) == true)
@@ -200,49 +242,73 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 return Padding(
                   padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
                   child: GlassCard(
+                    padding: const EdgeInsets.all(14),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Resumo Operacional',
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Resumo operacional',
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                            BadgeChip(
+                              icon: criticalCount > 0
+                                  ? Icons.report_problem
+                                  : Icons.verified,
+                              text: criticalCount > 0
+                                  ? '$criticalCount em alerta'
+                                  : 'Tudo estável',
+                              color: criticalCount > 0
+                                  ? Colors.red.shade700
+                                  : Colors.green.shade700,
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
                         Wrap(
                           spacing: 8,
                           runSpacing: 8,
                           children: [
                             BadgeChip(
                               icon: Icons.hub,
-                              text: '${markersState.length} pontos monitorados',
+                              text: '${markersState.length} pontos',
                               color: Colors.teal.shade700,
                             ),
-                            
                             BadgeChip(
                               icon: Icons.water_drop,
-                              text: '$availableWaterCount com agua disponivel',
+                              text: '$availableWaterCount com água',
                               color: Colors.blue.shade700,
                             ),
                             BadgeChip(
-                              icon: Icons.door_front_door,
+                              icon: Icons.grass,
+                              text: '$humidCount úmidos / $dryCount secos',
+                              color: Colors.brown.shade700,
+                            ),
+                            BadgeChip(
+                              icon: Icons.lock,
                               text: '$openGateCount comportas abertas',
                               color: Colors.green.shade700,
                             ),
                             BadgeChip(
                               icon: Icons.warning_amber,
-                              text: '$criticalCount pontos em alerta',
+                              text: '$criticalCount alertas',
                               color: criticalCount > 0
                                   ? Colors.red.shade700
                                   : Colors.green.shade700,
                             ),
                             BadgeChip(
                               icon: Icons.science,
-                              text: 'pH medio ${avgPh.toStringAsFixed(1)}',
+                              text: 'pH médio ${avgPh.toStringAsFixed(1)}',
                               color: Colors.indigo.shade700,
                             ),
                           ],
                         ),
+                      
                       ],
                     ),
                   ),
@@ -284,11 +350,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 MarkerFilter.gateOpen,
                               ),
                               _buildFilterChip(
-                                'Baixa umidade',
-                                MarkerFilter.lowHumidity,
+                                'Solo úmido',
+                                MarkerFilter.humidSoil,
                               ),
-                              _buildFilterChip('pH critico', MarkerFilter.criticalPh),
-                              _buildFilterChip('Sem agua', MarkerFilter.noWater),
+                              _buildFilterChip(
+                                'Solo seco',
+                                MarkerFilter.drySoil,
+                              ),
+                              _buildFilterChip(
+                                'pH critico',
+                                MarkerFilter.criticalPh,
+                              ),
+                              _buildFilterChip(
+                                'Sem agua',
+                                MarkerFilter.noWater,
+                              ),
                             ],
                           ),
                         ),
@@ -373,29 +449,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         children: [
                           BadgeChip(
                             icon: critical ? Icons.error_outline : Icons.check,
-                            text: critical ? 'Status: Critico' : 'Status: Estavel',
+                            text: critical
+                                ? 'Status: Critico'
+                                : 'Status: Estavel',
                             color: critical ? Colors.red : Colors.green,
                           ),
-
                         ],
                       ),
                       const SizedBox(height: 12),
-                      _buildIndicator(
-                        label: 'Nivel de agua',
-                        value: (markerData['waterlevel'] ?? 0).toDouble(),
-                        unit: '%',
-                        color: Colors.blue,
+                      BadgeChip(
+                        icon: _asWaterLevelBool(markerData['waterlevel'])
+                            ? Icons.water_drop
+                            : Icons.warning_amber,
+                        text: _asWaterLevelBool(markerData['waterlevel'])
+                            ? 'Nivel de agua: alto'
+                            : 'Nivel de agua: baixo',
+                        color: _asWaterLevelBool(markerData['waterlevel'])
+                            ? Colors.blue.shade700
+                            : Colors.red.shade700,
+                      ),
+                      const SizedBox(height: 12),
+                      BadgeChip(
+                        icon: _asHumidityBool(markerData['humidity'])
+                            ? Icons.water_drop
+                            : Icons.grass,
+                        text: _asHumidityBool(markerData['humidity'])
+                            ? 'Umidade do solo: úmido'
+                            : 'Umidade do solo: seco',
+                        color: _asHumidityBool(markerData['humidity'])
+                            ? Colors.green.shade700
+                            : Colors.brown.shade700,
                       ),
                       const SizedBox(height: 12),
                       _buildIndicator(
-                        label: 'Umidade do solo',
-                        value: (markerData['humidity'] ?? 0).toDouble(),
-                        unit: '%',
-                        color: Colors.brown,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildIndicator(
-                        label: 'Fluxo de agua',
+                        label: 'Fluxo de água',
                         value: (markerData['waterFlow'] ?? 0).toDouble(),
                         unit: 'L/min',
                         color: Colors.lightBlueAccent,
@@ -403,7 +490,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       const SizedBox(height: 12),
                       _buildIndicator(
-                        label: 'pH da agua',
+                        label: 'pH da água',
                         value: (markerData['ph'] ?? 0.0).toDouble(),
                         unit: '',
                         color: Colors.green,
@@ -447,7 +534,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               );
                               return ListTile(
                                 title: Text(
-                                  'Agua: ${e['waterlevel']}% | Umidade: ${e['humidity']}% | Fluxo: ${e['waterFlow']} | pH: ${e['ph']}',
+                                  'Agua: ${_asWaterLevelBool(e['waterlevel']) ? 'alto' : 'baixo'} | Umidade: ${_asHumidityBool(e['humidity']) ? 'Úmido' : 'Seco'} | Fluxo: ${e['waterFlow']} | pH: ${e['ph']}',
                                 ),
                                 subtitle: Text(
                                   'Comporta: ${e['isGateOpen'] == true ? 'Aberta' : 'Fechada'} - ${date.toLocal()}',
@@ -491,7 +578,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       hasChanged =
           newData['humidity'] != lastEntry['humidity'] ||
-          newData['waterlevel'] != lastEntry['waterlevel'] ||
+          _asWaterLevelBool(newData['waterlevel']) !=
+              _asWaterLevelBool(lastEntry['waterlevel']) ||
           newData['waterFlow'] != lastEntry['waterFlow'] ||
           newData['ph'] != lastEntry['ph'] ||
           newData['isGateOpen'] != lastEntry['isGateOpen'];
@@ -553,7 +641,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             Text(
               label,
-              style: const TextStyle(fontSize: 16, color: Colors.black87),
+              style: const TextStyle(
+                fontSize: 16,
+                color: Colors.black87,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             Text(
               '${value.toStringAsFixed(1)} $unit',
