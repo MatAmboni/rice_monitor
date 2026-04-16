@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:custom_info_window/custom_info_window.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/firebase_options.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -12,7 +14,7 @@ import 'utils/ui_components.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const RootApp());
 }
 
@@ -196,9 +198,7 @@ class _MyAppState extends State<MyApp> {
       draggable: true,
       position: position,
       icon: BitmapDescriptor.defaultMarkerWithHue(
-        isGateOpen
-            ? BitmapDescriptor.hueBlue
-            : BitmapDescriptor.hueRed,
+        isGateOpen ? BitmapDescriptor.hueBlue : BitmapDescriptor.hueRed,
       ),
       infoWindow: InfoWindow.noText,
       onTap: () {
@@ -248,9 +248,12 @@ class _MyAppState extends State<MyApp> {
     final bool hasHumidity = _asHumidityBool(markerData['humidity']);
     final bool hasWater = _asWaterLevelBool(markerData['waterlevel']);
     final double phValue = ((markerData['ph'] ?? 0.0) as num).toDouble();
-    final bool isCritical = !hasHumidity || !hasWater || phValue < 6.0 || phValue > 8.0;
+    final bool isCritical =
+        !hasHumidity || !hasWater || phValue < 6.0 || phValue > 8.0;
 
-    final Color accent = isCritical ? Colors.red.shade700 : Colors.green.shade700;
+    final Color accent = isCritical
+        ? Colors.red.shade700
+        : Colors.green.shade700;
     final String gateLabel = isGateOpen ? 'Aberta' : 'Fechada';
     final String humidityLabel = hasHumidity ? 'Úmido' : 'Seco';
     final String waterLabel = hasWater ? 'Alto' : 'Baixo';
@@ -267,7 +270,10 @@ class _MyAppState extends State<MyApp> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: accent.withValues(alpha: 0.35), width: 1.2),
+            border: Border.all(
+              color: accent.withValues(alpha: 0.35),
+              width: 1.2,
+            ),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x33000000),
@@ -282,7 +288,9 @@ class _MyAppState extends State<MyApp> {
               Row(
                 children: [
                   Icon(
-                    isCritical ? Icons.warning_amber_rounded : Icons.check_circle,
+                    isCritical
+                        ? Icons.warning_amber_rounded
+                        : Icons.check_circle,
                     color: accent,
                     size: 18,
                   ),
@@ -904,13 +912,15 @@ class _MyAppState extends State<MyApp> {
         const SizedBox(height: 10),
         FloatingActionButton.small(
           heroTag: 'centerMap',
-          onPressed: () {
-            mapController.animateCamera(
-              CameraUpdate.newCameraPosition(
-                CameraPosition(target: _center, zoom: 15),
-              ),
-            );
-          },
+          onPressed: kIsWeb
+              ? null
+              : () {
+                  mapController.animateCamera(
+                    CameraUpdate.newCameraPosition(
+                      CameraPosition(target: _center, zoom: 15),
+                    ),
+                  );
+                },
           child: const Icon(Icons.my_location),
         ),
         const SizedBox(height: 10),
@@ -1141,43 +1151,47 @@ class _MyAppState extends State<MyApp> {
               builder: (scaffoldContext) {
                 return Stack(
                   children: [
-                    GoogleMap(
-                      onMapCreated: (controller) {
-                        mapController = controller;
-                        _customInfoWindowController.googleMapController =
-                            controller;
-                        _isMapCreated = true;
-                        _tryCenterMapOnFirstMarker();
-                      },
-                      onTap: (_) {
-                        _customInfoWindowController.hideInfoWindow?.call();
-                      },
-                      onCameraMove: (_) {
-                        _customInfoWindowController.onCameraMove?.call();
-                      },
-                      markers: markers
-                          .map(
-                            (m) => _buildMarker(
-                              m.position,
-                              m.markerId.value,
-                              scaffoldContext,
-                            ),
-                          )
-                          .toSet(),
-                      initialCameraPosition: CameraPosition(
-                        target: _center,
-                        zoom: 15.0,
+                    if (kIsWeb)
+                      _buildWebMapFallback(scaffoldContext)
+                    else
+                      GoogleMap(
+                        onMapCreated: (controller) {
+                          mapController = controller;
+                          _customInfoWindowController.googleMapController =
+                              controller;
+                          _isMapCreated = true;
+                          _tryCenterMapOnFirstMarker();
+                        },
+                        onTap: (_) {
+                          _customInfoWindowController.hideInfoWindow?.call();
+                        },
+                        onCameraMove: (_) {
+                          _customInfoWindowController.onCameraMove?.call();
+                        },
+                        markers: markers
+                            .map(
+                              (m) => _buildMarker(
+                                m.position,
+                                m.markerId.value,
+                                scaffoldContext,
+                              ),
+                            )
+                            .toSet(),
+                        initialCameraPosition: CameraPosition(
+                          target: _center,
+                          zoom: 15.0,
+                        ),
+                        myLocationEnabled: false,
+                        myLocationButtonEnabled: false,
+                        mapType: _mapType,
                       ),
-                      myLocationEnabled: false,
-                      myLocationButtonEnabled: false,
-                      mapType: _mapType,
-                    ),
-                    CustomInfoWindow(
-                      controller: _customInfoWindowController,
-                      height: 130,
-                      width: 260,
-                      offset: 40,
-                    ),
+                    if (!kIsWeb)
+                      CustomInfoWindow(
+                        controller: _customInfoWindowController,
+                        height: 130,
+                        width: 260,
+                        offset: 40,
+                      ),
                     SafeArea(
                       child: Align(
                         alignment: Alignment.topCenter,
@@ -1195,6 +1209,78 @@ class _MyAppState extends State<MyApp> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildWebMapFallback(BuildContext scaffoldContext) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.blueGrey.shade50, Colors.teal.shade50],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Card(
+            elevation: 8,
+            margin: const EdgeInsets.all(24),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.map_outlined,
+                    size: 56,
+                    color: Colors.teal.shade700,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Mapa indisponivel no Chrome',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'A camada do Google Maps no web esta falhando neste ambiente. '
+                    'O painel, alertas e Firebase continuam funcionando.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: Colors.grey.shade700,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: () => _addNewMarker(scaffoldContext),
+                        icon: const Icon(Icons.add_location_alt),
+                        label: const Text('Adicionar marcador'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _showLegendSheet,
+                        icon: const Icon(Icons.info_outline),
+                        label: const Text('Ver legenda'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
