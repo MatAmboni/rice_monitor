@@ -13,6 +13,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  static String _lastUsedEmail = '';
+
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -20,6 +22,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _rememberEmail = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_lastUsedEmail.isNotEmpty) {
+      _emailController.text = _lastUsedEmail;
+      _rememberEmail = true;
+    }
+  }
 
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) {
@@ -41,6 +53,12 @@ class _LoginScreenState extends State<LoginScreen> {
         );
 
         if (foundUser.key != null) {
+          if (_rememberEmail) {
+            _lastUsedEmail = email;
+          } else {
+            _lastUsedEmail = '';
+          }
+
           if (!mounted) return;
           _showMessage("Login bem-sucedido!");
           Navigator.pushReplacement(
@@ -71,6 +89,128 @@ class _LoginScreenState extends State<LoginScreen> {
         behavior: SnackBarBehavior.floating,
       ),
     );
+  }
+
+  String? _validateEmail(String? value) {
+    final text = (value ?? '').trim();
+    if (text.isEmpty) {
+      return 'Informe o email.';
+    }
+    final regex = RegExp(r'^[\w\.-]+@[\w\.-]+\.\w+$');
+    if (!regex.hasMatch(text)) {
+      return 'Email invalido.';
+    }
+    return null;
+  }
+
+  String? _validatePassword(String? value) {
+    final text = (value ?? '').trim();
+    if (text.isEmpty) {
+      return 'Informe a senha.';
+    }
+    if (text.length < 6) {
+      return 'Use pelo menos 6 caracteres.';
+    }
+    return null;
+  }
+
+  Future<void> _showForgotPasswordDialog() async {
+    final emailController = TextEditingController(text: _emailController.text);
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        bool checking = false;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Recuperar senha'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Informe seu email para verificar se ele esta cadastrado.',
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      prefixIcon: Icon(Icons.email_outlined),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: checking
+                      ? null
+                      : () => Navigator.pop(dialogContext),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: checking
+                      ? null
+                      : () async {
+                          final email = emailController.text.trim();
+                          final emailError = _validateEmail(email);
+                          if (emailError != null) {
+                            _showMessage(emailError);
+                            return;
+                          }
+
+                          setDialogState(() {
+                            checking = true;
+                          });
+
+                          try {
+                            final snapshot = await usersRef.get();
+                            bool found = false;
+                            if (snapshot.exists) {
+                              final users = snapshot.value as Map<dynamic, dynamic>;
+                              found = users.values.any((u) => u['email'] == email);
+                            }
+
+                            if (!mounted) return;
+                            Navigator.pop(dialogContext);
+                            if (found) {
+                              _showMessage(
+                                'Email encontrado. Entre em contato com o suporte para redefinir a senha.',
+                              );
+                            } else {
+                              _showMessage('Email nao encontrado.');
+                            }
+                          } catch (_) {
+                            if (!mounted) return;
+                            Navigator.pop(dialogContext);
+                            _showMessage('Falha ao verificar o email.');
+                          }
+                        },
+                  child: checking
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Verificar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    emailController.dispose();
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
@@ -151,7 +291,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           TextFormField(
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
-                            // validator: _validateEmail,
+                            validator: _validateEmail,
                             decoration: const InputDecoration(
                               labelText: "Email",
                               prefixIcon: Icon(
@@ -164,7 +304,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           TextFormField(
                             controller: _passwordController,
                             obscureText: _obscurePassword,
-                            // validator: _validatePassword,
+                            validator: _validatePassword,
                             decoration: InputDecoration(
                               labelText: "Senha",
                               prefixIcon: const Icon(
@@ -185,6 +325,24 @@ class _LoginScreenState extends State<LoginScreen> {
                                 },
                               ),
                             ),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Checkbox(
+                                value: _rememberEmail,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _rememberEmail = value ?? false;
+                                  });
+                                },
+                              ),
+                              const Expanded(child: Text('Lembrar meu email')),
+                              TextButton(
+                                onPressed: _showForgotPasswordDialog,
+                                child: const Text('Esqueci a senha'),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 24),
                           SizedBox(

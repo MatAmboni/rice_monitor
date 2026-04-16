@@ -55,6 +55,7 @@ class _MyAppState extends State<MyApp> {
   int waterflow = 0;
   int ph = 0;
   bool isGateOpen = false;
+  final List<String> _recentAlerts = [];
   final LatLng _center = const LatLng(-28.813556, -49.341167);
 
   // Lista de markers
@@ -694,6 +695,13 @@ class _MyAppState extends State<MyApp> {
 
   // MODIFICADO: Usa a GlobalKey (_scaffoldMessengerKey) para mostrar o SnackBar
   void _sendLocalNotification(String title, String body) {
+    setState(() {
+      _recentAlerts.insert(0, '$title: $body');
+      if (_recentAlerts.length > 20) {
+        _recentAlerts.removeLast();
+      }
+    });
+
     // Verifica se o currentState não é nulo antes de usar
     _scaffoldMessengerKey.currentState?.showSnackBar(
       SnackBar(content: Text('$title: $body'), duration: Duration(seconds: 3)),
@@ -741,18 +749,6 @@ class _MyAppState extends State<MyApp> {
               text: '$openGates comportas abertas',
               color: Colors.blue.shade700,
             ),
-            BadgeChip(
-              icon: waterAvailable ? Icons.water_drop : Icons.warning_amber,
-              text: waterAvailable ? 'Agua disponivel' : 'Agua indisponivel',
-              color: waterAvailable
-                  ? Colors.green.shade700
-                  : Colors.red.shade700,
-            ),
-            BadgeChip(
-              icon: Icons.science,
-              text: 'pH atual: $ph',
-              color: Colors.orange.shade700,
-            ),
           ],
         ),
       ),
@@ -763,6 +759,12 @@ class _MyAppState extends State<MyApp> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        FloatingActionButton.small(
+          heroTag: 'legend',
+          onPressed: _showLegendSheet,
+          child: const Icon(Icons.info_outline),
+        ),
+        const SizedBox(height: 10),
         FloatingActionButton.small(
           heroTag: 'centerMap',
           onPressed: () {
@@ -781,6 +783,133 @@ class _MyAppState extends State<MyApp> {
           child: const Icon(Icons.add_location_alt),
         ),
       ],
+    );
+  }
+
+  void _showLegendSheet() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Legenda do Mapa',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 12),
+                _buildLegendItem(
+                  color: Colors.red,
+                  text: 'Marcador vermelho: comporta fechada',
+                ),
+                _buildLegendItem(
+                  color: Colors.blue,
+                  text: 'Marcador azul: comporta aberta',
+                ),
+                _buildLegendItem(
+                  color: Colors.green,
+                  text: 'pH entre 6.0 e 8.0: faixa ideal',
+                ),
+                _buildLegendItem(
+                  color: Colors.orange,
+                  text: 'pH fora da faixa: requer atencao',
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildLegendItem({required Color color, required String text}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text)),
+        ],
+      ),
+    );
+  }
+
+  void _showRecentAlertsSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Alertas Recentes',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (_recentAlerts.isNotEmpty)
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _recentAlerts.clear();
+                          });
+                          Navigator.pop(context);
+                        },
+                        child: const Text('Limpar'),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                if (_recentAlerts.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 16),
+                    child: Text(
+                      'Sem alertas ainda. Eles aparecerao aqui conforme eventos forem detectados.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  )
+                else
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.5,
+                    ),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: _recentAlerts.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final alert = _recentAlerts[index];
+                        return ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.notifications_active),
+                          title: Text(alert),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -819,13 +948,40 @@ class _MyAppState extends State<MyApp> {
                   ],
                 ),
                 IconButton(
+                  icon: const Icon(Icons.notifications_outlined),
+                  onPressed: _showRecentAlertsSheet,
+                ),
+                IconButton(
                   icon: const Icon(Icons.logout),
                   onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const LoginScreen(),
-                      ),
+                    showDialog<void>(
+                      context: context,
+                      builder: (dialogContext) {
+                        return AlertDialog(
+                          title: const Text('Sair da sessao'),
+                          content: const Text(
+                            'Deseja realmente sair e voltar para o login?',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(dialogContext),
+                              child: const Text('Cancelar'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () {
+                                Navigator.pop(dialogContext);
+                                Navigator.pushReplacement(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const LoginScreen(),
+                                  ),
+                                );
+                              },
+                              child: const Text('Sair'),
+                            ),
+                          ],
+                        );
+                      },
                     );
                   },
                 ),

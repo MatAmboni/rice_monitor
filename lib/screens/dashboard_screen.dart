@@ -3,17 +3,110 @@ import 'package:flutter/material.dart';
 
 import '../utils/ui_components.dart';
 
-class DashboardScreen extends StatelessWidget {
+enum MarkerFilter { all, gateOpen, lowHumidity, criticalPh, noWater }
+
+enum MarkerSort { idAsc, idDesc, humidityAsc, humidityDesc, phAsc, phDesc }
+
+class DashboardScreen extends StatefulWidget {
   final DatabaseReference markersRef;
 
   const DashboardScreen({super.key, required this.markersRef});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  MarkerFilter _activeFilter = MarkerFilter.all;
+  MarkerSort _activeSort = MarkerSort.idAsc;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  bool _isCritical(Map<String, dynamic> markerData) {
+    final humidity = (markerData['humidity'] ?? 0) as num;
+    final waterLevel = (markerData['waterlevel'] ?? 0) as num;
+    final ph = (markerData['ph'] ?? 0.0) as num;
+    return humidity < 40 || waterLevel == 0 || ph < 6.0 || ph > 8.0;
+  }
+
+  bool _matchesFilter(
+    MarkerFilter filter,
+    String markerId,
+    Map<String, dynamic> markerData,
+  ) {
+    switch (filter) {
+      case MarkerFilter.all:
+        return true;
+      case MarkerFilter.gateOpen:
+        return markerData['isGateOpen'] == true;
+      case MarkerFilter.lowHumidity:
+        return ((markerData['humidity'] ?? 0) as num) < 40;
+      case MarkerFilter.criticalPh:
+        final ph = (markerData['ph'] ?? 0.0) as num;
+        return ph < 6.0 || ph > 8.0;
+      case MarkerFilter.noWater:
+        return (markerData['waterlevel'] ?? 0) == 0;
+    }
+  }
+
+  List<MapEntry<String, Map<String, dynamic>>> _applySort(
+    List<MapEntry<String, Map<String, dynamic>>> markers,
+  ) {
+    markers.sort((a, b) {
+      switch (_activeSort) {
+        case MarkerSort.idAsc:
+          return a.key.compareTo(b.key);
+        case MarkerSort.idDesc:
+          return b.key.compareTo(a.key);
+        case MarkerSort.humidityAsc:
+          final ah = (a.value['humidity'] ?? 0) as num;
+          final bh = (b.value['humidity'] ?? 0) as num;
+          return ah.compareTo(bh);
+        case MarkerSort.humidityDesc:
+          final ah = (a.value['humidity'] ?? 0) as num;
+          final bh = (b.value['humidity'] ?? 0) as num;
+          return bh.compareTo(ah);
+        case MarkerSort.phAsc:
+          final aph = (a.value['ph'] ?? 0.0) as num;
+          final bph = (b.value['ph'] ?? 0.0) as num;
+          return aph.compareTo(bph);
+        case MarkerSort.phDesc:
+          final aph = (a.value['ph'] ?? 0.0) as num;
+          final bph = (b.value['ph'] ?? 0.0) as num;
+          return bph.compareTo(aph);
+      }
+    });
+    return markers;
+  }
+
+  String _sortLabel(MarkerSort sort) {
+    switch (sort) {
+      case MarkerSort.idAsc:
+        return 'ID (A-Z)';
+      case MarkerSort.idDesc:
+        return 'ID (Z-A)';
+      case MarkerSort.humidityAsc:
+        return 'Umidade crescente';
+      case MarkerSort.humidityDesc:
+        return 'Umidade decrescente';
+      case MarkerSort.phAsc:
+        return 'pH crescente';
+      case MarkerSort.phDesc:
+        return 'pH decrescente';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Dashboard de Irrigacao')),
       body: StreamBuilder<DatabaseEvent>(
-        stream: markersRef.onValue,
+        stream: widget.markersRef.onValue,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -49,7 +142,7 @@ class DashboardScreen extends StatelessWidget {
               };
 
               saveMarkerHistoryIfChanged(
-                markersRef.child(markerId),
+                widget.markersRef.child(markerId),
                 markersState[markerId]!,
               );
             }
@@ -78,12 +171,30 @@ class DashboardScreen extends StatelessWidget {
           final int openGateCount = markerValues
               .where((e) => (e['isGateOpen'] ?? false) == true)
               .length;
+          final int criticalCount = markerValues.where(_isCritical).length;
+          final double avgPh =
+              markerValues
+                  .map((e) => (e['ph'] ?? 0.0) as num)
+                  .fold<num>(0, (sum, value) => sum + value)
+                  .toDouble() /
+              markerValues.length;
 
-          final markerIds = markersState.keys.toList();
+          final searchText = _searchController.text.trim().toLowerCase();
+          final filteredEntries = markersState.entries.where((entry) {
+            final idMatch = entry.key.toLowerCase().contains(searchText);
+            final filterMatch = _matchesFilter(
+              _activeFilter,
+              entry.key,
+              entry.value,
+            );
+            return idMatch && filterMatch;
+          }).toList();
+
+          final sortedEntries = _applySort(filteredEntries);
 
           return ListView.builder(
             padding: const EdgeInsets.all(8.0),
-            itemCount: markerIds.length + 1,
+            itemCount: sortedEntries.length + 2,
             itemBuilder: (context, index) {
               if (index == 0) {
                 return Padding(
@@ -107,12 +218,7 @@ class DashboardScreen extends StatelessWidget {
                               text: '${markersState.length} pontos monitorados',
                               color: Colors.teal.shade700,
                             ),
-                            BadgeChip(
-                              icon: Icons.opacity,
-                              text:
-                                  'Umidade media ${avgHumidity.toStringAsFixed(1)}%',
-                              color: Colors.brown.shade600,
-                            ),
+                            
                             BadgeChip(
                               icon: Icons.water_drop,
                               text: '$availableWaterCount com agua disponivel',
@@ -123,6 +229,18 @@ class DashboardScreen extends StatelessWidget {
                               text: '$openGateCount comportas abertas',
                               color: Colors.green.shade700,
                             ),
+                            BadgeChip(
+                              icon: Icons.warning_amber,
+                              text: '$criticalCount pontos em alerta',
+                              color: criticalCount > 0
+                                  ? Colors.red.shade700
+                                  : Colors.green.shade700,
+                            ),
+                            BadgeChip(
+                              icon: Icons.science,
+                              text: 'pH medio ${avgPh.toStringAsFixed(1)}',
+                              color: Colors.indigo.shade700,
+                            ),
                           ],
                         ),
                       ],
@@ -131,9 +249,93 @@ class DashboardScreen extends StatelessWidget {
                 );
               }
 
-              final markerId = markerIds[index - 1];
-              final markerData = markersState[markerId]!;
+              if (index == 1) {
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+                  child: GlassCard(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      children: [
+                        TextField(
+                          controller: _searchController,
+                          onChanged: (_) => setState(() {}),
+                          decoration: InputDecoration(
+                            hintText: 'Buscar por ID do ponto',
+                            prefixIcon: const Icon(Icons.search),
+                            suffixIcon: _searchController.text.isEmpty
+                                ? null
+                                : IconButton(
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() {});
+                                    },
+                                    icon: const Icon(Icons.close),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              _buildFilterChip('Todos', MarkerFilter.all),
+                              _buildFilterChip(
+                                'Comporta aberta',
+                                MarkerFilter.gateOpen,
+                              ),
+                              _buildFilterChip(
+                                'Baixa umidade',
+                                MarkerFilter.lowHumidity,
+                              ),
+                              _buildFilterChip('pH critico', MarkerFilter.criticalPh),
+                              _buildFilterChip('Sem agua', MarkerFilter.noWater),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            const Icon(Icons.sort, size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: DropdownButton<MarkerSort>(
+                                value: _activeSort,
+                                isExpanded: true,
+                                underline: const SizedBox.shrink(),
+                                items: MarkerSort.values
+                                    .map(
+                                      (sort) => DropdownMenuItem(
+                                        value: sort,
+                                        child: Text(_sortLabel(sort)),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (value) {
+                                  if (value == null) return;
+                                  setState(() => _activeSort = value);
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (sortedEntries.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 8),
+                            child: Text(
+                              'Nenhum ponto encontrado para os filtros selecionados.',
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              final markerId = sortedEntries[index - 2].key;
+              final markerData = sortedEntries[index - 2].value;
               final bool isGateOpen = markerData['isGateOpen'] == true;
+              final bool critical = _isCritical(markerData);
 
               return Card(
                 margin: const EdgeInsets.symmetric(
@@ -162,6 +364,19 @@ class DashboardScreen extends StatelessWidget {
                                 : 'Comporta fechada',
                             color: isGateOpen ? Colors.green : Colors.red,
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          BadgeChip(
+                            icon: critical ? Icons.error_outline : Icons.check,
+                            text: critical ? 'Status: Critico' : 'Status: Estavel',
+                            color: critical ? Colors.red : Colors.green,
+                          ),
+
                         ],
                       ),
                       const SizedBox(height: 12),
@@ -195,10 +410,10 @@ class DashboardScreen extends StatelessWidget {
                         maxValue: 14,
                       ),
                       const SizedBox(height: 16),
-                  
+
                       const SizedBox(height: 10),
                       StreamBuilder<DatabaseEvent>(
-                        stream: markersRef
+                        stream: widget.markersRef
                             .child(markerId)
                             .child('history')
                             .orderByChild('timestamp')
@@ -303,6 +518,22 @@ class DashboardScreen extends StatelessWidget {
         }
       }
     }
+  }
+
+  Widget _buildFilterChip(String label, MarkerFilter filter) {
+    final selected = _activeFilter == filter;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: selected,
+        onSelected: (_) {
+          setState(() {
+            _activeFilter = filter;
+          });
+        },
+      ),
+    );
   }
 
   Widget _buildIndicator({
